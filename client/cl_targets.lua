@@ -5,6 +5,7 @@ local QBCore = exports['qb-core']:GetCoreObject()
 local zones = {}
 local stores = {}
 local purchasedLocations = {}
+local myPermissions = {}
 
 local function buildTargets()
   for id, zoneId in pairs(zones) do
@@ -183,9 +184,18 @@ RegisterNetEvent('sergeis-stores:client:refresh', function()
     for _, s in ipairs(stores) do
       if s.location_code then purchasedLocations[s.location_code] = true end
     end
-    buildTargets()
+    QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(map)
+      myPermissions = map or {}
+      buildTargets()
+    end)
   end)
 end)
+
+-- Gate manage/stock zones client-side by permission
+local function hasPerm(storeId, required)
+  local level = myPermissions[storeId] or 0
+  return level >= required
+end
 
 AddEventHandler('onResourceStart', function(res)
   if res ~= GetCurrentResourceName() then return end

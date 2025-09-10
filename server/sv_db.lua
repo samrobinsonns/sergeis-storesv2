@@ -79,6 +79,11 @@ function DB.AddVehicle(storeId, model, plate)
   return id
 end
 
+function DB.GetPermissionsForCitizen(citizenId)
+  local rows = MySQL.query.await('SELECT store_id, permission FROM sergeis_store_employees WHERE citizenid = ?', { citizenId })
+  return rows or {}
+end
+
 function DB.SetVehicleStored(vehId, stored)
   MySQL.update.await('UPDATE sergeis_store_vehicles SET stored = ? WHERE id = ?', { stored and 1 or 0, vehId })
 end

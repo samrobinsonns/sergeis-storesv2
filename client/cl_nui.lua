@@ -22,17 +22,17 @@ RegisterNUICallback('close', function(_, cb)
 end)
 
 RegisterNetEvent('sergeis-stores:client:openManage', function(storeId)
-  openUI('manage', { storeId = storeId })
+  openUI('manage', { storeId = storeId, allowedTabs = { 'shop', 'stock', 'manage', 'fleet' } })
 end)
 
 RegisterNetEvent('sergeis-stores:client:openStock', function(storeId)
   QBCore.Functions.TriggerCallback('sergeis-stores:server:getStock', function(payload)
-    openUI('stock', { storeId = storeId, items = payload.items or {}, allowedItems = payload.allowedItems or {} })
+    openUI('stock', { storeId = storeId, items = payload.items or {}, allowedItems = payload.allowedItems or {}, allowedTabs = { 'shop', 'stock', 'manage', 'fleet' } })
   end, storeId)
 end)
 
 RegisterNetEvent('sergeis-stores:client:openPurchase', function(locationCode)
-  openUI('purchase', { locationCode = locationCode })
+  openUI('purchase', { locationCode = locationCode, allowedTabs = { 'purchase' } })
 end)
 
 RegisterNUICallback('purchase', function(data, cb)
@@ -45,13 +45,20 @@ end)
 
 RegisterNetEvent('sergeis-stores:client:openShop', function(storeId)
   QBCore.Functions.TriggerCallback('sergeis-stores:server:getStock', function(payload)
-    openUI('shop', { storeId = storeId, items = payload.items or {} })
+    QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(map)
+      local level = (map or {})[storeId] or 0
+      local allowedTabs = { 'shop' }
+      if level >= StorePermission.MANAGER then
+        allowedTabs = { 'shop', 'stock', 'manage', 'fleet' }
+      end
+      openUI('shop', { storeId = storeId, items = payload.items or {}, allowedTabs = allowedTabs })
+    end)
   end, storeId)
 end)
 
 RegisterNetEvent('sergeis-stores:client:openFleet', function(storeId)
   QBCore.Functions.TriggerCallback('sergeis-stores:server:getVehicles', function(vehicles)
-    openUI('fleet', { storeId = storeId, vehicles = vehicles })
+    openUI('fleet', { storeId = storeId, vehicles = vehicles, allowedTabs = { 'shop', 'stock', 'manage', 'fleet' } })
   end, storeId)
 end)
 

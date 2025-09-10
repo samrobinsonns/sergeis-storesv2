@@ -20,6 +20,26 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getVehicles', function(so
   cb(DB.GetVehicles(storeId))
 end)
 
+QBCore.Functions.CreateCallback('sergeis-stores:server:getMyStorePerms', function(source, cb)
+  local src = source
+  local Player = QBCore.Functions.GetPlayer(src)
+  if not Player then cb({}) return end
+  local cid = Player.PlayerData.citizenid
+  local map = {}
+  -- Employees table
+  local rows = DB.GetPermissionsForCitizen(cid)
+  for _, r in ipairs(rows) do
+    map[tonumber(r.store_id)] = tonumber(r.permission) or 0
+  end
+  -- Owners implicitly OWNER level
+  for id, s in pairs(StoresCache) do
+    if s.owner_cid == cid then
+      map[tonumber(id)] = StorePermission.OWNER
+    end
+  end
+  cb(map)
+end)
+
 RegisterNetEvent('sergeis-stores:server:addEmployee', function(storeId, targetCid, perm)
   local src = source
   local cid = getCitizenId(src)
@@ -108,6 +128,7 @@ RegisterNetEvent('sergeis-stores:server:checkout', function(storeId, cart, payTy
 
   DB.RecordTransaction(storeId, cid, total, { cart = cart, payType = payType })
   TriggerClientEvent('QBCore:Notify', src, ('Purchased for $%d'):format(total), 'success')
+  TriggerClientEvent('sergeis-stores:client:refresh', src)
 end)
 
 -- Restricted stock management: only allowed items per location

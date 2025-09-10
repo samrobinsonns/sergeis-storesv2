@@ -5,6 +5,16 @@
   let currentTab = 'shop'
   let state = {}
 
+  function showTabs() {
+    const all = Array.from(document.querySelectorAll('.tabs button'))
+    const allowed = new Set(state.allowedTabs || [])
+    all.forEach(btn => {
+      const tab = btn.getAttribute('data-tab')
+      if (!allowed.size || allowed.has(tab)) btn.style.display = ''
+      else btn.style.display = 'none'
+    })
+  }
+
   function render() {
     if (currentTab === 'shop') {
       const items = state.items || []
@@ -64,7 +74,7 @@
     currentTab = tab || 'shop'
     state = data || {}
     app.classList.remove('hidden')
-    render()
+    showTabs(); render()
   }
 
   function close() {
