@@ -1,0 +1,12 @@
+body { font-family: Arial, sans-serif; color: #f1f1f1; }
+#app.hidden { display: none; }
+#app { position: absolute; top: 10%; left: 50%; transform: translateX(-50%); width: 700px; background: rgba(10,10,10,0.9); border: 1px solid #333; border-radius: 8px; }
+.header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #333; }
+.tabs { display: flex; gap: 8px; padding: 8px 14px; border-bottom: 1px solid #333; }
+.tabs button { background: #1f1f1f; color: #ddd; border: 1px solid #333; padding: 8px 10px; border-radius: 4px; cursor: pointer; }
+#content { padding: 14px; }
+.panel h3 { margin: 0 0 12px; }
+.row { display: grid; grid-template-columns: 1fr 120px 120px 80px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #222; }
+.cart { display: flex; justify-content: flex-end; padding-top: 8px; }
+
+

@@ -1,0 +1,102 @@
+project: Sergei's Stores V2 (QBCore FiveM Player-Owned Stores)
+
+goals:
+- Provide configurable, player-owned stores with stock, employees, banking, and fleet.
+- Support both qb-target and ox_target for interactions (auto-detected by default).
+- Support both ox_inventory and qb-inventory for item delivery (auto-detected).
+- Persist via oxmysql and keep SQL schema in sql/schema.sql.
+
+stack:
+- Runtime: FiveM (lua54 yes)
+- Framework: QBCore
+- Database: oxmysql (MySQL.* await APIs)
+- Targeting: qb-target or ox_target (auto)
+- Inventory: ox_inventory or qb-inventory (auto)
+- NUI: Vanilla HTML/CSS/JS using postMessage and NUI callbacks
+
+conventions:
+- Indentation & formatting:
+  - Do not change existing indentation style (spaces vs tabs) or width.
+  - Avoid mass-reformatting unrelated code; limit edits to necessary lines.
+  - Prefer multi-line readability to hard-to-read one-liners.
+- Lua style:
+  - Use local variables by default; avoid globals unless intentionally shared (StoreTarget, Inv, StoresCache, ClientStores, DB).
+  - Early-return guard clauses for errors/permissions.
+  - Avoid pcall unless necessary; handle failures with clear notifications.
+- File organization:
+  - Add new server modules under server/ and include them in fxmanifest.lua in logical order.
+  - Add new client modules under client/ and include them in fxmanifest.lua.
+  - Keep DB access in server/sv_db.lua only; do not run raw SQL elsewhere.
+  - Add new tables/columns to sql/schema.sql and keep statements idempotent (IF NOT EXISTS).
+
+targets & locations:
+- Config-driven locations in Config.Locations use vector4 (or vector3) for points.
+- Client target registration must accept vector3/vector4 or table with x,y,z,heading.
+- When persisting points to DB, normalize vectors into a table: { x, y, z, heading, length, width, height }.
+- Target wrapper is exposed via global StoreTarget; do not require() it (Lua require is not reliable clientside).
+- When adding zones:
+  - For qb-target: use AddBoxZone with minZ/maxZ derived from height.
+  - For ox_target: use addBoxZone with rotation = heading.
+
+permissions:
+- Use StorePermission constants (EMPLOYEE=1, MANAGER=2, OWNER=3).
+- Check required permission with HasStorePermission(current, required).
+- Owners should implicitly be treated as OWNER level.
+
+inventory & checkout:
+- Use Inv.AddItem(src, item, amount, metadata) to deliver items.
+- Inv auto-detects ox_inventory or qb-inventory.
+- Before checkout, verify player has funds and stock is sufficient; then adjust stock atomically and record transaction.
+
+config & allowed items:
+- Each location may declare allowedItems; server must validate stock updates against this list.
+- getStock callback returns { items, allowedItems } for the UI.
+
+nui:
+- UI messages must include an action field: open/close.
+- Registered NUI callbacks (from html/app.js):
+  - close
+  - purchase (data: { locationCode })
+  - checkout (data: { storeId, cart, payType })
+  - upsertStockAllowed (data: { storeId, item, label, price, stock })
+- Keep UI minimal, avoid heavy frameworks; plain JS + fetch to https://${GetParentResourceName()}/endpoint.
+
+db layer:
+- Always use MySQL.*.await APIs.
+- Serialize complex columns as JSON (e.g., points, payload).
+- Add helper decode wrappers when reading JSON columns.
+
+events & callbacks:
+- Server->Client refresh event: 'sergeis-stores:client:refresh'.
+- Client fetches store list via callback 'sergeis-stores:server:getStores'.
+- When changing server-side store state, trigger a refresh event.
+
+commands:
+- /createstore [name]: admin-only utility to create a store at player location.
+
+compatibility rules:
+- Target auto-detection order: ox_target first, else qb-target; can be forced via Config.Target = 'ox' | 'qb'.
+- Inventory auto-detection order: ox_inventory first, else qb-inventory.
+
+error handling:
+- Use QBCore:Notify for user-facing errors and successes.
+- Prefer returning early on invalid inputs.
+
+testing checklist (before shipping changes):
+- Purchasing a config location creates a store and registers targets.
+- Shop UI lists stock and allows checkout; items are added via selected inventory system.
+- Stock UI lists items and allows upsert for allowedItems only.
+- Management and Fleet UIs open without errors (even if minimal).
+- Targets appear for both qb-target and ox_target across servers.
+
+do_not:
+- Do not introduce new globals without strong justification.
+- Do not hardcode resource names of dependencies; use exports when possible.
+- Do not block threads with long loops; use CreateThread sensibly.
+
+future_work (preferred patterns):
+- Company bank account: account_balance in sergeis_stores; add deposit/withdraw endpoints and UI with permission checks.
+- Employee management: add CRUD endpoints and UI for employees with roles.
+- Fleet: spawn/store vehicles with fees, store spawn points in points.fleet or per-vehicle config.
+
+

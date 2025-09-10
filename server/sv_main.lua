@@ -1,0 +1,131 @@
+local QBCore = exports['qb-core']:GetCoreObject()
+
+StoresCache = StoresCache or {}
+ClientStores = ClientStores or {}
+
+local function buildClientStores()
+  ClientStores = {}
+  for _, s in pairs(StoresCache) do
+    ClientStores[#ClientStores + 1] = {
+      id = s.id,
+      name = s.name,
+      points = s.points or {},
+      location_code = s.location_code
+    }
+  end
+end
+
+function LoadStores()
+  StoresCache = {}
+  local rows = DB.GetStores()
+  for _, row in ipairs(rows) do
+    StoresCache[row.id] = row
+  end
+  buildClientStores()
+end
+
+-- Initial load
+CreateThread(function()
+  LoadStores()
+end)
+
+-- Callback to fetch stores
+QBCore.Functions.CreateCallback('sergeis-stores:server:getStores', function(source, cb)
+  cb(ClientStores)
+end)
+
+RegisterNetEvent('sergeis-stores:server:refreshClients', function()
+  buildClientStores()
+  TriggerClientEvent('sergeis-stores:client:refresh', -1)
+end)
+
+local function isAdmin(src)
+  if src == 0 then return true end
+  local has = QBCore.Functions.HasPermission(src, 'admin') or QBCore.Functions.HasPermission(src, 'god')
+  return has
+end
+
+RegisterCommand('createstore', function(src, args)
+  if not isAdmin(src) then
+    TriggerClientEvent('QBCore:Notify', src, 'No permission', 'error')
+    return
+  end
+  local name = table.concat(args or {}, ' ')
+  if name == nil or name == '' then name = ('Store #%d'):format(math.random(1000, 9999)) end
+  local ped = GetPlayerPed(src)
+  local coords = GetEntityCoords(ped)
+  local heading = GetEntityHeading(ped)
+  local point = {
+    x = coords.x,
+    y = coords.y,
+    z = coords.z,
+    heading = heading,
+    length = Config.DefaultStorePoint.length,
+    width = Config.DefaultStorePoint.width,
+    height = Config.DefaultStorePoint.height
+  }
+  local points = { shop = point }
+
+  local Player = QBCore.Functions.GetPlayer(src)
+  local ownerCid = Player and Player.PlayerData and Player.PlayerData.citizenid or 'unknown'
+  local id = DB.CreateStore(name, ownerCid, points, nil)
+  if id then
+    LoadStores()
+    TriggerClientEvent('QBCore:Notify', src, ('Created store "%s" (ID %d)'):format(name, id), 'success')
+    TriggerEvent('sergeis-stores:server:refreshClients')
+  else
+    TriggerClientEvent('QBCore:Notify', src, 'Failed to create store', 'error')
+  end
+end, false)
+
+-- Purchase a config location store
+RegisterNetEvent('sergeis-stores:server:purchaseLocation', function(locationCode)
+  local src = source
+  local loc = Config.Locations[locationCode]
+  if not loc then return end
+  local Player = QBCore.Functions.GetPlayer(src)
+  if not Player then return end
+
+  -- Check if already owned
+  for _, s in pairs(StoresCache) do
+    if s.location_code == locationCode then
+      TriggerClientEvent('QBCore:Notify', src, 'This location is already owned', 'error')
+      return
+    end
+  end
+
+  local price = tonumber(loc.price) or 0
+  if price > 0 then
+    if not Player.Functions.RemoveMoney('bank', price) then
+      TriggerClientEvent('QBCore:Notify', src, 'Not enough bank balance', 'error')
+      return
+    end
+  end
+
+  local cid = Player.PlayerData.citizenid
+  local points = loc.points or {}
+  -- Normalize vector points into serializable tables with heading
+  local function normalizePoint(p, fallback)
+    if type(p) == 'vector4' or (type(p) == 'table' and p.w) then
+      return { x = p.x, y = p.y, z = p.z, heading = p.w, length = fallback.length, width = fallback.width, height = fallback.height }
+    elseif type(p) == 'vector3' then
+      return { x = p.x, y = p.y, z = p.z, heading = 0.0, length = fallback.length, width = fallback.width, height = fallback.height }
+    elseif type(p) == 'table' then
+      return p
+    end
+    return nil
+  end
+  if points.purchase then points.purchase = normalizePoint(points.purchase, { length = 1.2, width = 1.2, height = 1.2 }) end
+  if points.order then points.order = normalizePoint(points.order, { length = 1.6, width = 1.6, height = 1.2 }) end
+  if points.manage then points.manage = normalizePoint(points.manage, { length = 1.2, width = 1.2, height = 1.2 }) end
+  local id = DB.CreateStore(loc.label, cid, points, locationCode)
+  if id then
+    LoadStores()
+    TriggerClientEvent('QBCore:Notify', src, ('Purchased %s'):format(loc.label), 'success')
+    TriggerEvent('sergeis-stores:server:refreshClients')
+  else
+    TriggerClientEvent('QBCore:Notify', src, 'Purchase failed', 'error')
+  end
+end)
+
+
