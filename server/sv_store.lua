@@ -9,11 +9,47 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(sourc
   local items = DB.GetStock(storeId)
   local store = StoresCache[storeId]
   local allowed = {}
+  
+  -- Debug logging
+  print('DEBUG getStock: storeId =', storeId)
+  print('DEBUG getStock: store =', json.encode(store or {}))
+  
   if store and store.location_code then
     local loc = Config.Locations[store.location_code]
-    if loc and loc.allowedItems then allowed = loc.allowedItems end
+    print('DEBUG getStock: location_code =', store.location_code)
+    print('DEBUG getStock: location config =', json.encode(loc or {}))
+    if loc and loc.allowedItems then 
+      allowed = loc.allowedItems
+      print('DEBUG getStock: allowedItems =', json.encode(allowed))
+    end
+  else
+    print('DEBUG getStock: No location_code found for store')
   end
+  
   cb({ items = items, allowedItems = allowed })
+end)
+
+QBCore.Functions.CreateCallback('sergeis-stores:server:getUnownedStock', function(source, cb, locationCode)
+  local loc = Config.Locations[locationCode]
+  if not loc or not loc.allowedItems then
+    cb({ items = {} })
+    return
+  end
+  
+  -- Generate stock for unowned stores with reasonable default values
+  local items = {}
+  for _, item in ipairs(loc.allowedItems) do
+    local sharedItem = QBCore.Shared and QBCore.Shared.Items and QBCore.Shared.Items[item]
+    local label = (sharedItem and sharedItem.label) or item
+    local price = (sharedItem and sharedItem.price) or 10 -- Default price
+    table.insert(items, {
+      item = item,
+      label = label,
+      price = price,
+      stock = 999 -- Unlimited stock for unowned stores
+    })
+  end
+  cb({ items = items })
 end)
 
 QBCore.Functions.CreateCallback('sergeis-stores:server:getVehicles', function(source, cb, storeId)
@@ -101,12 +137,7 @@ RegisterNetEvent('sergeis-stores:server:checkout', function(storeId, cart, payTy
     return
   end
 
-  if not removeMoney(payType, total) then
-    TriggerClientEvent('QBCore:Notify', src, 'Not enough money', 'error')
-    return
-  end
-
-  -- Verify stock availability before adjusting
+  -- Verify stock availability BEFORE taking money
   local current = {}
   for _, row in ipairs(DB.GetStock(storeId)) do current[row.item] = tonumber(row.stock) or 0 end
   for _, entry in ipairs(cart or {}) do
@@ -121,14 +152,103 @@ RegisterNetEvent('sergeis-stores:server:checkout', function(storeId, cart, payTy
     end
   end
 
+  -- Only take money AFTER stock validation passes
+  if not removeMoney(payType, total) then
+    TriggerClientEvent('QBCore:Notify', src, 'Not enough money', 'error')
+    return
+  end
+
   for _, entry in ipairs(cart or {}) do
     DB.AdjustStock(storeId, entry.item, -math.abs(tonumber(entry.qty) or 0))
     Inv.AddItem(src, entry.item, tonumber(entry.qty) or 0)
   end
 
-  DB.RecordTransaction(storeId, cid, total, { cart = cart, payType = payType })
+  -- Add the purchase amount to the store's account balance
+  print(('Adding $%d revenue to store %d'):format(total, storeId))
+  MySQL.query.await('UPDATE sergeis_stores SET account_balance = account_balance + ? WHERE id = ?', { total, storeId })
+  
+  -- Update the cache
+  if StoresCache[storeId] then
+    local oldBalance = StoresCache[storeId].account_balance or 0
+    StoresCache[storeId].account_balance = oldBalance + total
+    print(('Store %d balance updated: $%d -> $%d'):format(storeId, oldBalance, StoresCache[storeId].account_balance))
+  end
+
+  DB.RecordTransaction(storeId, cid, total, { type = 'purchase', cart = cart, payType = payType, description = 'Customer purchase' })
   TriggerClientEvent('QBCore:Notify', src, ('Purchased for $%d'):format(total), 'success')
+  
+  -- Notify store owner if online
+  local store = StoresCache[storeId]
+  if store and store.owner_cid then
+    local ownerPlayer = QBCore.Functions.GetPlayerByCitizenId(store.owner_cid)
+    if ownerPlayer then
+      TriggerClientEvent('QBCore:Notify', ownerPlayer.PlayerData.source, ('Your store earned $%d from a customer purchase'):format(total), 'success')
+    end
+  end
+  
   TriggerClientEvent('sergeis-stores:client:refresh', src)
+end)
+
+RegisterNetEvent('sergeis-stores:server:checkoutUnowned', function(locationCode, cart, payType)
+  local src = source
+  local cid = getCitizenId(src)
+  if not cid then return end
+  
+  local loc = Config.Locations[locationCode]
+  if not loc or not loc.allowedItems then
+    TriggerClientEvent('QBCore:Notify', src, 'Invalid location', 'error')
+    return
+  end
+
+  local total = 0
+  for _, entry in ipairs(cart or {}) do
+    total = total + (tonumber(entry.price) or 0) * (tonumber(entry.qty) or 0)
+  end
+  payType = payType or Config.DefaultPayment
+
+  local Player = QBCore.Functions.GetPlayer(src)
+  if not Player then return end
+
+  local function removeMoney(type_, amount)
+    if type_ == 'cash' then
+      return Player.Functions.RemoveMoney('cash', amount)
+    else
+      return Player.Functions.RemoveMoney('bank', amount)
+    end
+  end
+
+  if total <= 0 then
+    TriggerClientEvent('QBCore:Notify', src, 'Cart is empty', 'error')
+    return
+  end
+
+  if not removeMoney(payType, total) then
+    TriggerClientEvent('QBCore:Notify', src, 'Not enough money', 'error')
+    return
+  end
+
+  -- Verify items are allowed for this location
+  local allowedSet = {}
+  for _, item in ipairs(loc.allowedItems) do allowedSet[item] = true end
+  
+  for _, entry in ipairs(cart or {}) do
+    local want = math.abs(tonumber(entry.qty) or 0)
+    if want <= 0 then
+      TriggerClientEvent('QBCore:Notify', src, 'Invalid quantity in cart', 'error')
+      return
+    end
+    if not allowedSet[entry.item] then
+      TriggerClientEvent('QBCore:Notify', src, ('Item %s not available at this location'):format(entry.item), 'error')
+      return
+    end
+  end
+
+  -- Add items to player inventory (no stock tracking for unowned stores)
+  for _, entry in ipairs(cart or {}) do
+    Inv.AddItem(src, entry.item, tonumber(entry.qty) or 0)
+  end
+
+  TriggerClientEvent('QBCore:Notify', src, ('Purchased for $%d'):format(total), 'success')
 end)
 
 -- Restricted stock management: only allowed items per location

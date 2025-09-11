@@ -24,8 +24,25 @@ function LoadStores()
   buildClientStores()
 end
 
--- Initial load
+-- Initial load with dependency checking
 CreateThread(function()
+  -- Wait for database to be ready
+  local attempts = 0
+  while attempts < 50 do -- 10 second timeout
+    attempts = attempts + 1
+    local success, result = pcall(function()
+      return MySQL.query.await('SELECT 1 as test', {})
+    end)
+    
+    if success then
+      LoadStores()
+      return
+    end
+    
+    Wait(200)
+  end
+  
+  -- Load anyway as fallback
   LoadStores()
 end)
 
@@ -37,6 +54,24 @@ end)
 RegisterNetEvent('sergeis-stores:server:refreshClients', function()
   buildClientStores()
   TriggerClientEvent('sergeis-stores:client:refresh', -1)
+end)
+
+-- Broadcast store locations to all clients when server is ready
+CreateThread(function()
+  Wait(5000) -- Wait 5 seconds after server start
+  buildClientStores()
+  TriggerClientEvent('sergeis-stores:client:storeLocationsUpdate', -1, ClientStores)
+end)
+
+-- Also broadcast to individual players when they join
+RegisterNetEvent('QBCore:Server:PlayerLoaded', function(Player)
+  local src = Player.PlayerData.source
+  
+  CreateThread(function()
+    Wait(2000) -- Wait for client to be ready
+    buildClientStores()
+    TriggerClientEvent('sergeis-stores:client:storeLocationsUpdate', src, ClientStores)
+  end)
 end)
 
 local function isAdmin(src)
@@ -116,7 +151,10 @@ RegisterNetEvent('sergeis-stores:server:purchaseLocation', function(locationCode
     return nil
   end
   if points.purchase then points.purchase = normalizePoint(points.purchase, { length = 1.2, width = 1.2, height = 1.2 }) end
-  if points.order then points.order = normalizePoint(points.order, { length = 1.6, width = 1.6, height = 1.2 }) end
+  if points.order then 
+    points.shop = normalizePoint(points.order, { length = 1.6, width = 1.6, height = 1.2 })
+    points.order = nil -- Remove order point since we're using shop instead
+  end
   if points.manage then points.manage = normalizePoint(points.manage, { length = 1.2, width = 1.2, height = 1.2 }) end
   local id = DB.CreateStore(loc.label, cid, points, locationCode)
   if id then

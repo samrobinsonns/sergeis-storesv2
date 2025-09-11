@@ -5,23 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sergei's Stores</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
   </head>
   <body>
     <div id="app" class="hidden">
-      <div class="header">
-        <div id="title">Sergei's Stores</div>
-        <button id="close">✕</button>
+      <div class="ipad-frame">
+        <div class="ipad-screen">
+          <div class="ui-container">
+            <!-- Top Bar -->
+            <div class="top-bar">
+              <div class="top-bar-left">
+                <div class="company-icon">
+                  <i class="fas fa-store"></i>
+                </div>
+                <h1 class="company-name">Sergei's Stores</h1>
+              </div>
+              <button id="close" class="close-btn">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+
+            <!-- Main Layout -->
+            <div class="main-layout">
+              <!-- Sidebar Navigation -->
+              <div class="sidebar">
+                <div class="sidebar-header">
+                  <h3>Navigation</h3>
+                </div>
+                <nav class="sidebar-nav">
+                  <button class="nav-item active" data-tab="shop">
+                    <i class="icon fas fa-shopping-basket"></i>
+                    Shop
+                  </button>
+                  <button class="nav-item" data-tab="stock">
+                    <i class="icon fas fa-boxes"></i>
+                    Stock
+                  </button>
+                  <button class="nav-item" data-tab="manage">
+                    <i class="icon fas fa-briefcase"></i>
+                    Manage
+                  </button>
+                  <button class="nav-item" data-tab="employees">
+                    <i class="icon fas fa-users"></i>
+                    Employees
+                  </button>
+                  <button class="nav-item" data-tab="banking">
+                    <i class="icon fas fa-university"></i>
+                    Banking
+                  </button>
+                  <button class="nav-item" data-tab="fleet">
+                    <i class="icon fas fa-truck"></i>
+                    Fleet
+                  </button>
+                  <button class="nav-item" data-tab="purchase">
+                    <i class="icon fas fa-credit-card"></i>
+                    Purchase
+                  </button>
+                </nav>
+                <div class="sidebar-footer">
+                  <div class="user-info">
+                    <div class="user-details">
+                      <div class="user-rank">Store Manager</div>
+                      <div class="user-status">Online</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Content Area -->
+              <div class="content-area">
+                <div id="content">
+                  <!-- Dynamic content will be loaded here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="tabs">
-        <button data-tab="shop">Shop</button>
-        <button data-tab="stock">Stock</button>
-        <button data-tab="manage">Manage</button>
-        <button data-tab="fleet">Fleet</button>
-      </div>
-      <div id="content"></div>
     </div>
     <script src="app.js"></script>
   </body>
-  </html>
-
-
+</html>

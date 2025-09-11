@@ -1,30 +1,52 @@
 -- Use global StoreTarget from target_wrapper.lua
-
 local QBCore = exports['qb-core']:GetCoreObject()
+
+-- Register the broadcast event immediately
+RegisterNetEvent('sergeis-stores:client:storeLocationsUpdate')
 
 local zones = {}
 local stores = {}
 local purchasedLocations = {}
 local myPermissions = {}
+local isRefreshing = false
+local lastRefreshTime = 0
 
-local function buildTargets()
+-- Define helper functions early
+local function hasPerm(storeId, required)
+  local level = myPermissions[storeId] or 0
+  return level >= required
+end
+
+local function buildPublicTargets()
+  -- Remove only public zones (shopping, purchase, order)
   for id, zoneId in pairs(zones) do
-    StoreTarget.RemoveZone(zoneId)
-    zones[id] = nil
+    if string.match(id, '_shop$') or string.match(id, '_purchase$') or string.match(id, '_order$') then
+      StoreTarget.RemoveZone(zoneId)
+      zones[id] = nil
+    end
   end
 
+  -- Build shopping targets for all stores (public access)
   for _, s in ipairs(stores) do
+    -- Use config coordinates if this store has a location_code, otherwise use database coordinates
     local points = s.points or {}
+    if s.location_code and Config.Locations[s.location_code] and Config.Locations[s.location_code].points then
+      points = Config.Locations[s.location_code].points
+    end
 
+    -- Shopping targets - always available to everyone
     local orderPoint = points.shop or points.order
     if orderPoint then
       local pid = ('store_%d_shop'):format(s.id)
       local shop = orderPoint
       local coords = shop
       if type(shop) == 'vector4' or shop.w then coords = { x = shop.x, y = shop.y, z = shop.z, heading = shop.w } end
-      zones[pid] = StoreTarget.AddBoxZone(pid, coords, shop.length or Config.Interact.Shop.length, shop.width or Config.Interact.Shop.width, {
+      local shopLength = (type(shop) == 'table' and shop.length) or Config.Interact.Shop.length
+      local shopWidth = (type(shop) == 'table' and shop.width) or Config.Interact.Shop.width
+      local shopHeight = (type(shop) == 'table' and shop.height) or Config.Interact.Shop.height
+      zones[pid] = StoreTarget.AddBoxZone(pid, coords, shopLength, shopWidth, {
         heading = coords.heading,
-        height = points.shop.height or Config.Interact.Shop.height,
+        height = shopHeight,
         distance = Config.Interact.Shop.distance,
         targets = {
           {
@@ -38,75 +60,9 @@ local function buildTargets()
         }
       })
     end
-
-    if points.manage then
-      local pid = ('store_%d_manage'):format(s.id)
-      local mp = points.manage
-      local coords = mp
-      if type(mp) == 'vector4' or mp.w then coords = { x = mp.x, y = mp.y, z = mp.z, heading = mp.w } end
-      zones[pid] = StoreTarget.AddBoxZone(pid, coords, mp.length or Config.Interact.Manage.length, mp.width or Config.Interact.Manage.width, {
-        heading = coords.heading,
-        height = points.manage.height or Config.Interact.Manage.height,
-        distance = Config.Interact.Manage.distance,
-        targets = {
-          {
-            name = pid,
-            icon = Config.Interact.Manage.icon,
-            label = Config.Interact.Manage.label,
-            onSelect = function()
-              TriggerEvent('sergeis-stores:client:openManage', s.id)
-            end
-          }
-        }
-      })
-    end
-
-    if points.stock then
-      local pid = ('store_%d_stock'):format(s.id)
-      local sp = points.stock
-      local coords = sp
-      if type(sp) == 'vector4' or sp.w then coords = { x = sp.x, y = sp.y, z = sp.z, heading = sp.w } end
-      zones[pid] = StoreTarget.AddBoxZone(pid, coords, sp.length or Config.Interact.Stock.length, sp.width or Config.Interact.Stock.width, {
-        heading = coords.heading,
-        height = points.stock.height or Config.Interact.Stock.height,
-        distance = Config.Interact.Stock.distance,
-        targets = {
-          {
-            name = pid,
-            icon = Config.Interact.Stock.icon,
-            label = Config.Interact.Stock.label,
-            onSelect = function()
-              TriggerEvent('sergeis-stores:client:openStock', s.id)
-            end
-          }
-        }
-      })
-    end
-
-    if points.fleet then
-      local pid = ('store_%d_fleet'):format(s.id)
-      local fp = points.fleet
-      local coords = fp
-      if type(fp) == 'vector4' or fp.w then coords = { x = fp.x, y = fp.y, z = fp.z, heading = fp.w } end
-      zones[pid] = StoreTarget.AddBoxZone(pid, coords, fp.length or Config.Interact.Fleet.length, fp.width or Config.Interact.Fleet.width, {
-        heading = coords.heading,
-        height = points.fleet.height or Config.Interact.Fleet.height,
-        distance = Config.Interact.Fleet.distance,
-        targets = {
-          {
-            name = pid,
-            icon = Config.Interact.Fleet.icon,
-            label = Config.Interact.Fleet.label,
-            onSelect = function()
-              TriggerEvent('sergeis-stores:client:openFleet', s.id)
-            end
-          }
-        }
-      })
-    end
   end
-
-  -- Add purchase/order/manage points from config for not-yet-owned locations
+  
+  -- Add purchase/order points from config for not-yet-owned locations (public access)
   for code, loc in pairs(Config.Locations or {}) do
     if not purchasedLocations[code] then
       if loc.points and loc.points.purchase then
@@ -114,9 +70,12 @@ local function buildTargets()
         local p = loc.points.purchase
         local coords = p
         if type(p) == 'vector4' or p.w then coords = { x = p.x, y = p.y, z = p.z, heading = p.w } end
-        zones[pid] = StoreTarget.AddBoxZone(pid, coords, p.length or 1.2, p.width or 1.2, {
+        local purchaseLength = (type(p) == 'table' and p.length) or 1.2
+        local purchaseWidth = (type(p) == 'table' and p.width) or 1.2
+        local purchaseHeight = (type(p) == 'table' and p.height) or 1.2
+        zones[pid] = StoreTarget.AddBoxZone(pid, coords, purchaseLength, purchaseWidth, {
           heading = coords.heading,
-          height = loc.points.purchase.height or 1.2,
+          height = purchaseHeight,
           distance = 2.0,
           targets = {
             {
@@ -135,9 +94,12 @@ local function buildTargets()
         local o = loc.points.order
         local coords = o
         if type(o) == 'vector4' or o.w then coords = { x = o.x, y = o.y, z = o.z, heading = o.w } end
-        zones[pid] = StoreTarget.AddBoxZone(pid, coords, o.length or 1.6, o.width or 1.6, {
+        local orderLength = (type(o) == 'table' and o.length) or 1.6
+        local orderWidth = (type(o) == 'table' and o.width) or 1.6
+        local orderHeight = (type(o) == 'table' and o.height) or 1.2
+        zones[pid] = StoreTarget.AddBoxZone(pid, coords, orderLength, orderWidth, {
           heading = coords.heading,
-          height = loc.points.order.height or 1.2,
+          height = orderHeight,
           distance = 2.0,
           targets = {
             {
@@ -145,21 +107,129 @@ local function buildTargets()
               icon = 'fas fa-shopping-basket',
               label = 'Order Items',
               onSelect = function()
-                -- If unowned, just inform player
-                QBCore.Functions.Notify('Store not owned yet', 'error')
+                -- Open shop for unowned location with config items
+                TriggerEvent('sergeis-stores:client:openUnownedShop', code)
               end
             }
           }
         })
       end
+    end
+  end
+end
+
+local function buildPrivateTargets()
+  -- Remove only private zones (manage, stock, fleet)
+  for id, zoneId in pairs(zones) do
+    if string.match(id, '_manage$') or string.match(id, '_stock$') or string.match(id, '_fleet$') then
+      StoreTarget.RemoveZone(zoneId)
+      zones[id] = nil
+    end
+  end
+  
+  -- Build management targets only for stores the player has access to
+  for _, s in ipairs(stores) do
+    -- Use config coordinates if this store has a location_code, otherwise use database coordinates
+    local points = s.points or {}
+    if s.location_code and Config.Locations[s.location_code] and Config.Locations[s.location_code].points then
+      points = Config.Locations[s.location_code].points
+    end
+    
+    local hasPermission = hasPerm(s.id, 1) -- At least employee level
+
+    -- Management targets - only for players with permissions
+    if hasPermission and points.manage then
+      local pid = ('store_%d_manage'):format(s.id)
+      local mp = points.manage
+      local coords = mp
+      if type(mp) == 'vector4' or mp.w then coords = { x = mp.x, y = mp.y, z = mp.z, heading = mp.w } end
+      local manageLength = (type(mp) == 'table' and mp.length) or Config.Interact.Manage.length
+      local manageWidth = (type(mp) == 'table' and mp.width) or Config.Interact.Manage.width
+      local manageHeight = (type(mp) == 'table' and mp.height) or Config.Interact.Manage.height
+      zones[pid] = StoreTarget.AddBoxZone(pid, coords, manageLength, manageWidth, {
+        heading = coords.heading,
+        height = manageHeight,
+        distance = Config.Interact.Manage.distance,
+        targets = {
+          {
+            name = pid,
+            icon = Config.Interact.Manage.icon,
+            label = Config.Interact.Manage.label,
+            onSelect = function()
+              TriggerEvent('sergeis-stores:client:openManage', s.id)
+            end
+          }
+        }
+      })
+    end
+
+    -- Stock targets - only for players with permissions
+    if hasPermission and points.stock then
+      local pid = ('store_%d_stock'):format(s.id)
+      local sp = points.stock
+      local coords = sp
+      if type(sp) == 'vector4' or sp.w then coords = { x = sp.x, y = sp.y, z = sp.z, heading = sp.w } end
+      local stockLength = (type(sp) == 'table' and sp.length) or Config.Interact.Stock.length
+      local stockWidth = (type(sp) == 'table' and sp.width) or Config.Interact.Stock.width
+      local stockHeight = (type(sp) == 'table' and sp.height) or Config.Interact.Stock.height
+      zones[pid] = StoreTarget.AddBoxZone(pid, coords, stockLength, stockWidth, {
+        heading = coords.heading,
+        height = stockHeight,
+        distance = Config.Interact.Stock.distance,
+        targets = {
+          {
+            name = pid,
+            icon = Config.Interact.Stock.icon,
+            label = Config.Interact.Stock.label,
+            onSelect = function()
+              TriggerEvent('sergeis-stores:client:openStock', s.id)
+            end
+          }
+        }
+      })
+    end
+
+    -- Fleet targets - only for players with permissions
+    if hasPermission and points.fleet then
+      local pid = ('store_%d_fleet'):format(s.id)
+      local fp = points.fleet
+      local coords = fp
+      if type(fp) == 'vector4' or fp.w then coords = { x = fp.x, y = fp.y, z = fp.z, heading = fp.w } end
+      local fleetLength = (type(fp) == 'table' and fp.length) or Config.Interact.Fleet.length
+      local fleetWidth = (type(fp) == 'table' and fp.width) or Config.Interact.Fleet.width
+      local fleetHeight = (type(fp) == 'table' and fp.height) or Config.Interact.Fleet.height
+      zones[pid] = StoreTarget.AddBoxZone(pid, coords, fleetLength, fleetWidth, {
+        heading = coords.heading,
+        height = fleetHeight,
+        distance = Config.Interact.Fleet.distance,
+        targets = {
+          {
+            name = pid,
+            icon = Config.Interact.Fleet.icon,
+            label = Config.Interact.Fleet.label,
+            onSelect = function()
+              TriggerEvent('sergeis-stores:client:openFleet', s.id)
+            end
+          }
+        }
+      })
+    end
+  end
+  
+  -- Add management points from config for not-yet-owned locations (private access)
+  for code, loc in pairs(Config.Locations or {}) do
+    if not purchasedLocations[code] then
       if loc.points and loc.points.manage then
         local pid = ('loc_%s_manage'):format(code)
         local m = loc.points.manage
         local coords = m
         if type(m) == 'vector4' or m.w then coords = { x = m.x, y = m.y, z = m.z, heading = m.w } end
-        zones[pid] = StoreTarget.AddBoxZone(pid, coords, m.length or 1.2, m.width or 1.2, {
+        local locManageLength = (type(m) == 'table' and m.length) or 1.2
+        local locManageWidth = (type(m) == 'table' and m.width) or 1.2
+        local locManageHeight = (type(m) == 'table' and m.height) or 1.2
+        zones[pid] = StoreTarget.AddBoxZone(pid, coords, locManageLength, locManageWidth, {
           heading = coords.heading,
-          height = loc.points.manage.height or 1.2,
+          height = locManageHeight,
           distance = 2.0,
           targets = {
             {
@@ -178,28 +248,154 @@ local function buildTargets()
 end
 
 RegisterNetEvent('sergeis-stores:client:refresh', function()
+  local currentTime = GetGameTimer()
+  
+  -- Prevent multiple refreshes within 2 seconds
+  if isRefreshing or (currentTime - lastRefreshTime) < 2000 then
+    return
+  end
+  
+  isRefreshing = true
+  lastRefreshTime = currentTime
+  
+  -- First get stores data and build public targets immediately
   QBCore.Functions.TriggerCallback('sergeis-stores:server:getStores', function(data)
     stores = data or {}
     purchasedLocations = {}
     for _, s in ipairs(stores) do
       if s.location_code then purchasedLocations[s.location_code] = true end
     end
+    
+    -- Build public targets immediately (shopping access for everyone)
+    buildPublicTargets()
+    
+    -- Then get permissions and add private targets
     QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(map)
       myPermissions = map or {}
-      buildTargets()
+      
+      -- Build private targets (management access for authorized players)
+      buildPrivateTargets()
+      isRefreshing = false
     end)
   end)
 end)
 
--- Gate manage/stock zones client-side by permission
-local function hasPerm(storeId, required)
-  local level = myPermissions[storeId] or 0
-  return level >= required
-end
+-- Simplified refresh that just gets stores and builds all targets
+RegisterNetEvent('sergeis-stores:client:refreshSimple', function()
+  QBCore.Functions.TriggerCallback('sergeis-stores:server:getStores', function(data)
+    if data and #data > 0 then
+      stores = data
+      purchasedLocations = {}
+      for _, s in ipairs(stores) do
+        if s.location_code then purchasedLocations[s.location_code] = true end
+      end
+      
+      -- Build shopping targets immediately (these work for everyone)
+      buildPublicTargets()
+      
+      -- Get permissions in background and add management targets if applicable
+      QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(perms)
+        myPermissions = perms or {}
+        buildPrivateTargets()
+      end)
+    end
+  end)
+end)
 
+-- Gate manage/stock zones client-side by permission (function moved to top of file)
+
+-- Simple approach: Load targets when dependencies are ready
 AddEventHandler('onResourceStart', function(res)
   if res ~= GetCurrentResourceName() then return end
-  TriggerEvent('sergeis-stores:client:refresh')
+  
+  CreateThread(function()
+    -- Wait for basic dependencies
+    while not (QBCore and QBCore.Functions and StoreTarget and StoreTarget.AddBoxZone) do
+      Wait(100)
+    end
+    
+    -- Load targets immediately with a simple approach
+    Wait(2000) -- Give server time to be ready
+    TriggerEvent('sergeis-stores:client:refreshSimple')
+  end)
+end)
+
+-- Add a manual command to refresh targets
+RegisterCommand('refreshtargets', function()
+  TriggerEvent('sergeis-stores:client:refreshSimple')
+end)
+
+-- Add a test command to check if client is working
+RegisterCommand('testclient', function()
+  print('=== CLIENT TEST COMMAND ===')
+  print('QBCore available:', QBCore ~= nil)
+  print('StoreTarget available:', StoreTarget ~= nil)
+  print('Current stores:', #stores)
+  print('Current zones:', json.encode(zones))
+end)
+
+-- Add a command to check coordinates being used
+RegisterCommand('checkcoords', function()
+  print('=== COORDINATE CHECK ===')
+  for _, s in ipairs(stores) do
+    print('Store', s.id, 'location_code:', s.location_code)
+    print('Database points:', json.encode(s.points or {}))
+    
+    if s.location_code and Config.Locations[s.location_code] then
+      print('Config points:', json.encode(Config.Locations[s.location_code].points or {}))
+      print('Using: CONFIG coordinates')
+    else
+      print('Using: DATABASE coordinates')
+    end
+    print('---')
+  end
+end)
+
+-- Handle player spawn/login events
+RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
+  CreateThread(function()
+    Wait(2000) -- Wait 2 seconds after player loads
+    TriggerEvent('sergeis-stores:client:refreshSimple')
+  end)
+end)
+
+-- Handle player spawn
+AddEventHandler('playerSpawned', function()
+  CreateThread(function()
+    Wait(3000) -- Wait 3 seconds after spawn
+    TriggerEvent('sergeis-stores:client:refreshSimple')
+  end)
+end)
+
+-- Handle server broadcast of store locations (no callbacks needed!)
+RegisterNetEvent('sergeis-stores:client:storeLocationsUpdate', function(storeData)
+  if storeData and #storeData > 0 then
+    stores = storeData
+    purchasedLocations = {}
+    for _, s in ipairs(stores) do
+      if s.location_code then purchasedLocations[s.location_code] = true end
+    end
+    
+    -- Build public shopping targets immediately (no permission needed)
+    buildPublicTargets()
+    
+    -- Only build private targets if we don't already have them (to avoid overwriting)
+    local hasPrivateTargets = false
+    for id, _ in pairs(zones) do
+      if string.match(id, '_manage$') or string.match(id, '_stock$') or string.match(id, '_fleet$') then
+        hasPrivateTargets = true
+        break
+      end
+    end
+    
+    if not hasPrivateTargets then
+      -- Get permissions and build private targets if we don't have them yet
+      QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(perms)
+        myPermissions = perms or {}
+        buildPrivateTargets()
+      end)
+    end
+  end
 end)
 
 AddEventHandler('onResourceStop', function(res)

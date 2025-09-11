@@ -88,4 +88,9 @@ function DB.SetVehicleStored(vehId, stored)
   MySQL.update.await('UPDATE sergeis_store_vehicles SET stored = ? WHERE id = ?', { stored and 1 or 0, vehId })
 end
 
+function DB.GetEmployees(storeId)
+  local rows = MySQL.query.await('SELECT citizenid, permission FROM sergeis_store_employees WHERE store_id = ?', { storeId })
+  return rows or {}
+end
+
 
