@@ -264,6 +264,25 @@ RegisterNetEvent('sergeis-stores:server:completeDelivery', function(orderId)
     return
   end
   
+  -- Before updating stock, enforce store max capacity if configured
+  local storeRow = StoresCache[order.storeId]
+  local locCfg = storeRow and storeRow.location_code and Config.Locations[storeRow.location_code]
+  local maxCapacity = locCfg and tonumber(locCfg.maxCapacity) or nil
+  if maxCapacity then
+    local currentTotal = 0
+    for _, row in ipairs(DB.GetStock(order.storeId)) do
+      currentTotal = currentTotal + (tonumber(row.stock) or 0)
+    end
+    local incomingTotal = 0
+    for _, item in ipairs(order.orderItems) do
+      incomingTotal = incomingTotal + (tonumber(item.quantity) or 0)
+    end
+    if currentTotal + incomingTotal > maxCapacity then
+      TriggerClientEvent('QBCore:Notify', src, ('Cannot complete delivery: capacity exceeded (%d + %d > %d)'):format(currentTotal, incomingTotal, maxCapacity), 'error')
+      return
+    end
+  end
+
   -- Update stock for each item
   for _, item in ipairs(order.orderItems) do
     -- Check if item already exists

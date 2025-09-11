@@ -57,6 +57,9 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(sourc
   local items = DB.GetStock(storeId)
   local store = StoresCache[storeId]
   local allowed = {}
+  local usedCapacity = 0
+  for _, row in ipairs(items) do usedCapacity = usedCapacity + (tonumber(row.stock) or 0) end
+  local maxCapacity
   
   -- Debug logging
   print('DEBUG getStock: storeId =', storeId)
@@ -71,11 +74,14 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(sourc
       allowed = allowedList
       print('DEBUG getStock: allowedItems =', json.encode(allowed))
     end
+    if loc and loc.maxCapacity then
+      maxCapacity = tonumber(loc.maxCapacity)
+    end
   else
     print('DEBUG getStock: No location_code found for store')
   end
   
-  cb({ items = items, allowedItems = allowed })
+  cb({ items = items, allowedItems = allowed, usedCapacity = usedCapacity, maxCapacity = maxCapacity })
 end)
 
 QBCore.Functions.CreateCallback('sergeis-stores:server:getUnownedStock', function(source, cb, locationCode)
@@ -155,6 +161,30 @@ RegisterNetEvent('sergeis-stores:server:upsertStock', function(storeId, item, la
   if not HasStorePermission(level, required) then
     TriggerClientEvent('QBCore:Notify', src, 'No store permission', 'error')
     return
+  end
+  -- Enforce store capacity if configured
+  local storeRow = StoresCache[storeId]
+  local locCfg = storeRow and storeRow.location_code and Config.Locations[storeRow.location_code]
+  local maxCapacity = locCfg and tonumber(locCfg.maxCapacity) or nil
+  if maxCapacity then
+    local currentTotal = 0
+    for _, row in ipairs(DB.GetStock(storeId)) do
+      currentTotal = currentTotal + (tonumber(row.stock) or 0)
+    end
+    local newStock = math.max(0, tonumber(stock) or 0)
+    -- Find existing stock for this item to calculate delta impact
+    local existing = 0
+    for _, row in ipairs(DB.GetStock(storeId)) do
+      if row.item == item then
+        existing = tonumber(row.stock) or 0
+        break
+      end
+    end
+    local projected = currentTotal - existing + newStock
+    if projected > maxCapacity then
+      TriggerClientEvent('QBCore:Notify', src, ('Store capacity exceeded (%d/%d)'):format(projected, maxCapacity), 'error')
+      return
+    end
   end
   DB.UpsertStockItem(storeId, item, label, price, stock)
   TriggerClientEvent('QBCore:Notify', src, 'Stock updated', 'success')
@@ -333,6 +363,30 @@ RegisterNetEvent('sergeis-stores:server:upsertStockAllowed', function(storeId, i
     local sharedItem = QBCore.Shared and QBCore.Shared.Items and QBCore.Shared.Items[item]
     if sharedItem and sharedItem.label then label = sharedItem.label end
     if not label or label == '' then label = item end
+  end
+  -- Enforce store capacity if configured
+  local storeRow = StoresCache[storeId]
+  local locCfg = storeRow and storeRow.location_code and Config.Locations[storeRow.location_code]
+  local maxCapacity = locCfg and tonumber(locCfg.maxCapacity) or nil
+  if maxCapacity then
+    local currentTotal = 0
+    for _, row in ipairs(DB.GetStock(storeId)) do
+      currentTotal = currentTotal + (tonumber(row.stock) or 0)
+    end
+    local newStock = math.max(0, tonumber(stock) or 0)
+    -- Find existing stock for this item to calculate delta impact
+    local existing = 0
+    for _, row in ipairs(DB.GetStock(storeId)) do
+      if row.item == item then
+        existing = tonumber(row.stock) or 0
+        break
+      end
+    end
+    local projected = currentTotal - existing + newStock
+    if projected > maxCapacity then
+      TriggerClientEvent('QBCore:Notify', src, ('Store capacity exceeded (%d/%d)'):format(projected, maxCapacity), 'error')
+      return
+    end
   end
   DB.UpsertStockItem(storeId, item, label, price, stock)
   TriggerClientEvent('QBCore:Notify', src, 'Stock updated', 'success')

@@ -648,6 +648,10 @@
       console.log('Stock tab - allowedItems:', allowed)
       console.log('Stock tab - state:', state)
       
+      // Capacity summary (if provided by server via state)
+      const usedCapacity = state.usedCapacity || items.reduce((sum, it) => sum + (it.stock || 0), 0)
+      const maxCapacity = state.maxCapacity || null
+
       // Create a comprehensive list of all allowed items (existing + available to add)
       const allItems = [...allowed].map(itemCode => {
         const existing = items.find(i => i.item === itemCode)
@@ -731,6 +735,7 @@
             <div class="header-actions">
               <div class="stock-summary">
                 <span>${items.length} items configured</span>
+                ${maxCapacity ? `<span style="margin-left:12px;">Capacity: <strong>${usedCapacity}</strong> / <strong>${maxCapacity}</strong></span>` : ''}
               </div>
               <button class="order-stock-btn" id="orderStockBtn">
                 <i class="fas fa-truck-loading"></i> Order Stock
