@@ -1426,6 +1426,55 @@
     })
   }
 
+  function renderUpgrades() {
+    console.log('renderUpgrades() called, storeId:', state.storeId)
+    const used = state.usedCapacity || 0
+    const max = state.maxCapacity || 0
+
+    fetch(`https://${GetParentResourceName()}/getCapacityUpgrades`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    })
+    .then(r => r.json())
+    .then(data => {
+      const upgrades = data.upgrades || []
+      const tiers = upgrades.map((u, idx) => {
+        return `
+          <div class=\"upgrade-item\">\n            <div class=\"upgrade-info\">\n              <h4>+${u.increase} Capacity</h4>\n              <div class=\"upgrade-meta\">\n                <span class=\"meta-chip\"><i class=\"fas fa-box\"></i> Capacity</span>\n                <span class=\"meta-chip price\"><i class=\"fas fa-dollar-sign\"></i> $${(u.price||0).toLocaleString()}</span>\n              </div>\n            </div>\n            <div class=\"upgrade-actions\">\n              <button class=\"upgrade-btn\" data-tier=\"${idx + 1}\">\n                <i class=\"fas fa-arrow-up\"></i> Purchase\n              </button>\n            </div>\n          </div>
+        `
+      }).join('')
+
+      content.innerHTML = `
+        <div class=\"panel\">\n          <div class=\"card-header\">\n            <h3><i class=\"icon fas fa-arrow-up\"></i>Upgrades</h3>\n          </div>\n          <div class=\"upgrades-summary\">\n            <div class=\"summary-card\">\n              <div class=\"summary-title\">Current Capacity</div>\n              <div class=\"summary-value\">${used} / ${max}</div>\n            </div>\n          </div>\n          <div class=\"upgrades-list\">\n            ${tiers}\n          </div>\n        </div>
+      `
+
+      content.querySelectorAll('.upgrade-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tier = parseInt(btn.getAttribute('data-tier'))
+          showConfirmDialog('Purchase Upgrade', 'Confirm purchasing this capacity upgrade?', () => {
+            fetch(`https://${GetParentResourceName()}/purchaseCapacityUpgrade`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ storeId: state.storeId, tier })
+            }).then(() => {
+              fetch(`https://${GetParentResourceName()}/getStock`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ storeId: state.storeId })
+              }).then(r => r.json()).then(data => {
+                state.items = data.items || []
+                state.allowedItems = data.allowedItems || []
+                state.usedCapacity = data.usedCapacity
+                state.maxCapacity = data.maxCapacity
+                renderUpgrades()
+              })
+            })
+          })
+        })
+      })
+    })
+  }
+
   function addEmployeeEventListeners() {
     // Add employee button
     const addEmployeeBtn = document.getElementById('addEmployeeBtn')
@@ -1640,6 +1689,9 @@
       } else if (newTab === 'fleet') {
         console.log('Switching to fleet tab')
         renderFleet()
+      } else if (newTab === 'upgrades') {
+        console.log('Switching to upgrades tab')
+        renderUpgrades()
       } else if (newTab === 'about') {
         console.log('Switching to about tab')
         render()

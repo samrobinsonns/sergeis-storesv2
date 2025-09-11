@@ -67,6 +67,14 @@ Config.FleetVehicles = {
   }
 }
 
+-- Capacity upgrade tiers (can be expanded)
+-- Each upgrade increases the store's max capacity by `increase` for the listed `price`
+Config.CapacityUpgrades = {
+  { increase = 200, price = 50000 },
+  { increase = 400, price = 90000 },
+  { increase = 600, price = 130000 }
+}
+
 -- Predefined store locations driven by config
 -- Add as many locations as you want; each can be purchased and becomes player-owned
 -- Required points: purchase, order, manage, delivery

@@ -267,7 +267,9 @@ RegisterNetEvent('sergeis-stores:server:completeDelivery', function(orderId)
   -- Before updating stock, enforce store max capacity if configured
   local storeRow = StoresCache[order.storeId]
   local locCfg = storeRow and storeRow.location_code and Config.Locations[storeRow.location_code]
-  local maxCapacity = locCfg and tonumber(locCfg.maxCapacity) or nil
+  local baseMax = locCfg and tonumber(locCfg.maxCapacity) or 0
+  local upgraded = storeRow and tonumber(storeRow.capacity) or 0
+  local maxCapacity = (baseMax + upgraded) > 0 and (baseMax + upgraded) or nil
   if maxCapacity then
     local currentTotal = 0
     for _, row in ipairs(DB.GetStock(order.storeId)) do

@@ -49,4 +49,8 @@ CREATE TABLE IF NOT EXISTS `sergeis_store_vehicles` (
   CONSTRAINT `fk_store_veh_store` FOREIGN KEY (`store_id`) REFERENCES `sergeis_stores` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Add capacity override column for store upgrades
+ALTER TABLE `sergeis_stores` 
+  ADD COLUMN IF NOT EXISTS `capacity` INT NULL AFTER `location_code`;
+
 

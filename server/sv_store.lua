@@ -74,14 +74,61 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(sourc
       allowed = allowedList
       print('DEBUG getStock: allowedItems =', json.encode(allowed))
     end
-    if loc and loc.maxCapacity then
-      maxCapacity = tonumber(loc.maxCapacity)
+    if loc then
+      local baseMax = tonumber(loc.maxCapacity) or 0
+      local upgraded = tonumber(store.capacity) or 0
+      maxCapacity = baseMax + upgraded
     end
   else
     print('DEBUG getStock: No location_code found for store')
   end
   
   cb({ items = items, allowedItems = allowed, usedCapacity = usedCapacity, maxCapacity = maxCapacity })
+end)
+
+-- Purchase capacity upgrade
+RegisterNetEvent('sergeis-stores:server:purchaseCapacityUpgrade', function(storeId, tier)
+  local src = source
+  local cid = getCitizenId(src)
+  if not cid then return end
+  tier = tonumber(tier)
+  if not tier or not Config.CapacityUpgrades or not Config.CapacityUpgrades[tier] then
+    TriggerClientEvent('QBCore:Notify', src, 'Invalid upgrade tier', 'error')
+    return
+  end
+  local store = StoresCache[storeId]
+  if not store then
+    TriggerClientEvent('QBCore:Notify', src, 'Store not found', 'error')
+    return
+  end
+  -- Permission: Managers and Owners
+  local level = DB.GetEmployeePermission(storeId, cid)
+  if cid == store.owner_cid then level = StorePermission.OWNER end
+  if not HasStorePermission(level, StorePermission.MANAGER) then
+    TriggerClientEvent('QBCore:Notify', src, 'No permission', 'error')
+    return
+  end
+  local upgrade = Config.CapacityUpgrades[tier]
+  local price = tonumber(upgrade.price) or 0
+  local increase = tonumber(upgrade.increase) or 0
+  if price <= 0 or increase <= 0 then
+    TriggerClientEvent('QBCore:Notify', src, 'Invalid upgrade configuration', 'error')
+    return
+  end
+  -- Check store funds
+  if (store.account_balance or 0) < price then
+    TriggerClientEvent('QBCore:Notify', src, 'Insufficient store funds', 'error')
+    return
+  end
+  -- Deduct and persist
+  MySQL.query.await('UPDATE sergeis_stores SET account_balance = account_balance - ?, capacity = COALESCE(capacity, 0) + ? WHERE id = ?', { price, increase, storeId })
+  -- Update cache
+  store.account_balance = (store.account_balance or 0) - price
+  store.capacity = (store.capacity or 0) + increase
+  -- Record transaction
+  DB.RecordTransaction(storeId, cid, -price, { type = 'capacity_upgrade', tier = tier, increase = increase, description = 'Capacity upgrade' })
+  TriggerClientEvent('QBCore:Notify', src, ('Capacity increased by %d'):format(increase), 'success')
+  TriggerEvent('sergeis-stores:server:refreshClients')
 end)
 
 QBCore.Functions.CreateCallback('sergeis-stores:server:getUnownedStock', function(source, cb, locationCode)
@@ -165,7 +212,9 @@ RegisterNetEvent('sergeis-stores:server:upsertStock', function(storeId, item, la
   -- Enforce store capacity if configured
   local storeRow = StoresCache[storeId]
   local locCfg = storeRow and storeRow.location_code and Config.Locations[storeRow.location_code]
-  local maxCapacity = locCfg and tonumber(locCfg.maxCapacity) or nil
+  local baseMax = locCfg and tonumber(locCfg.maxCapacity) or 0
+  local upgraded = storeRow and tonumber(storeRow.capacity) or 0
+  local maxCapacity = (baseMax + upgraded) > 0 and (baseMax + upgraded) or nil
   if maxCapacity then
     local currentTotal = 0
     for _, row in ipairs(DB.GetStock(storeId)) do
@@ -367,7 +416,9 @@ RegisterNetEvent('sergeis-stores:server:upsertStockAllowed', function(storeId, i
   -- Enforce store capacity if configured
   local storeRow = StoresCache[storeId]
   local locCfg = storeRow and storeRow.location_code and Config.Locations[storeRow.location_code]
-  local maxCapacity = locCfg and tonumber(locCfg.maxCapacity) or nil
+  local baseMax = locCfg and tonumber(locCfg.maxCapacity) or 0
+  local upgraded = storeRow and tonumber(storeRow.capacity) or 0
+  local maxCapacity = (baseMax + upgraded) > 0 and (baseMax + upgraded) or nil
   if maxCapacity then
     local currentTotal = 0
     for _, row in ipairs(DB.GetStock(storeId)) do

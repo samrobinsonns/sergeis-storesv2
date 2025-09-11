@@ -11,7 +11,7 @@ local function decodeOr(tableOrJson)
 end
 
 function DB.GetStores()
-  local rows = MySQL.query.await('SELECT id, name, owner_cid, account_balance, points, location_code FROM sergeis_stores', {})
+  local rows = MySQL.query.await('SELECT id, name, owner_cid, account_balance, points, location_code, capacity FROM sergeis_stores', {})
   rows = rows or {}
   for _, row in ipairs(rows) do
     row.points = decodeOr(row.points)
@@ -32,6 +32,10 @@ end
 
 function DB.UpdateStorePoints(storeId, points)
   MySQL.update.await('UPDATE sergeis_stores SET points = ? WHERE id = ?', { json.encode(points or {}), storeId })
+end
+
+function DB.SetStoreCapacity(storeId, capacity)
+  MySQL.update.await('UPDATE sergeis_stores SET capacity = ? WHERE id = ?', { capacity, storeId })
 end
 
 function DB.AddEmployee(storeId, citizenId, permission)

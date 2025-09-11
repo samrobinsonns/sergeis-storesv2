@@ -22,7 +22,7 @@ RegisterNUICallback('close', function(_, cb)
 end)
 
 RegisterNetEvent('sergeis-stores:client:openManage', function(storeId)
-  openUI('manage', { storeId = storeId, allowedTabs = { 'stock', 'manage', 'fleet', 'about', 'employees', 'banking' } })
+  openUI('manage', { storeId = storeId, allowedTabs = { 'stock', 'manage', 'fleet', 'upgrades', 'about', 'employees', 'banking' } })
 end)
 
 RegisterNetEvent('sergeis-stores:client:openStock', function(storeId)
@@ -30,7 +30,7 @@ RegisterNetEvent('sergeis-stores:client:openStock', function(storeId)
     print('DEBUG client openStock: storeId =', storeId)
     print('DEBUG client openStock: payload =', json.encode(payload or {}))
     print('DEBUG client openStock: allowedItems =', json.encode(payload.allowedItems or {}))
-    openUI('stock', { storeId = storeId, items = payload.items or {}, allowedItems = payload.allowedItems or {}, allowedTabs = { 'stock', 'manage', 'fleet', 'about', 'employees', 'banking' } })
+    openUI('stock', { storeId = storeId, items = payload.items or {}, allowedItems = payload.allowedItems or {}, usedCapacity = payload.usedCapacity, maxCapacity = payload.maxCapacity, allowedTabs = { 'stock', 'manage', 'fleet', 'upgrades', 'about', 'employees', 'banking' } })
   end, storeId)
 end)
 
@@ -55,8 +55,22 @@ end)
 
 RegisterNetEvent('sergeis-stores:client:openFleet', function(storeId)
   QBCore.Functions.TriggerCallback('sergeis-stores:server:getVehicles', function(vehicles)
-    openUI('fleet', { storeId = storeId, vehicles = vehicles, allowedTabs = { 'stock', 'manage', 'fleet', 'about', 'employees', 'banking' } })
+    openUI('fleet', { storeId = storeId, vehicles = vehicles, allowedTabs = { 'stock', 'manage', 'fleet', 'upgrades', 'about', 'employees', 'banking' } })
   end, storeId)
+end)
+-- Upgrades
+RegisterNUICallback('purchaseCapacityUpgrade', function(data, cb)
+  local storeId = data.storeId
+  local tier = tonumber(data.tier)
+  if storeId and tier then
+    TriggerServerEvent('sergeis-stores:server:purchaseCapacityUpgrade', storeId, tier)
+  end
+  cb(1)
+end)
+
+-- Get capacity upgrades from Config
+RegisterNUICallback('getCapacityUpgrades', function(_, cb)
+  cb({ upgrades = Config.CapacityUpgrades or {} })
 end)
 
 RegisterNetEvent('sergeis-stores:client:openUnownedShop', function(locationCode)

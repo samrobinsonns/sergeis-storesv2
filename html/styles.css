@@ -1322,6 +1322,45 @@ button[data-act="add"]:hover, #checkout:hover {
   overflow-y: auto;
 }
 
+/* Upgrades Styling */
+.upgrades-summary {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.summary-card {
+  background: rgba(17, 17, 17, 0.9);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 10px;
+  padding: 16px;
+  min-width: 200px;
+  text-align: center;
+}
+
+.summary-title { color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-bottom: 6px; }
+.summary-value { color: #dc2626; font-size: 1.4rem; font-weight: 700; }
+
+.upgrades-list { display: flex; flex-direction: column; gap: 12px; }
+
+.upgrade-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(17, 17, 17, 0.9);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.upgrade-info h4 { margin: 0 0 6px 0; color: var(--light-color); }
+.upgrade-meta { display: flex; gap: 8px; }
+.meta-chip { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 999px; padding: 4px 10px; font-size: 0.8rem; color: rgba(255,255,255,0.85); display: inline-flex; align-items: center; gap: 6px; }
+.meta-chip.price { background: rgba(251, 191, 36, 0.1); border-color: rgba(251, 191, 36, 0.3); color: #fbbf24; }
+
+.upgrade-btn { background: linear-gradient(45deg, #3b82f6, #2563eb); border: none; color: #fff; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.upgrade-btn:hover { filter: brightness(1.05); transform: translateY(-1px); }
+
 .transaction-item {
   display: flex;
   justify-content: space-between;
