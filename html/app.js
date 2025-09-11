@@ -388,6 +388,105 @@
     console.log('Rendering tab:', currentTab)
     console.log('State:', state)
     
+    if (currentTab === 'about') {
+      content.innerHTML = `
+        <div class="panel">
+          <div class="card-header">
+            <h3><i class="icon fas fa-circle-info"></i>About This Store</h3>
+          </div>
+          <div class="about-container">
+            <div class="about-hero">
+              <div class="about-hero-text">
+                <h2>Run a Successful Shop</h2>
+                <p>Everything you need to know to manage stock, employees, banking, and fleet operations.</p>
+              </div>
+            </div>
+
+            <div class="about-grid">
+              <div class="about-card">
+                <div class="about-card-header">
+                  <i class="fas fa-boxes"></i>
+                  <h4>Stock & Ordering</h4>
+                </div>
+                <div class="about-card-body">
+                  <ul class="about-list">
+                    <li>Use the <strong>Stock</strong> tab to add or edit item price and stock.</li>
+                    <li>Click <strong>Order Stock</strong> to start a delivery mission using a fleet vehicle.</li>
+                    <li>Choose items and quantities; keep within vehicle capacity to enable the mission.</li>
+                    <li>Complete the pickup and deliver back to your store <em>delivery point</em> to receive items.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="about-card">
+                <div class="about-card-header">
+                  <i class="fas fa-users"></i>
+                  <h4>Employees & Roles</h4>
+                </div>
+                <div class="about-card-body">
+                  <ul class="about-list">
+                    <li>Manage staff in the <strong>Employees</strong> tab.</li>
+                    <li>Roles: <strong>Employee</strong> (1), <strong>Manager</strong> (2), <strong>Owner</strong> (3).</li>
+                    <li>Only Managers and Owners can edit stock, banking, and fleet.</li>
+                    <li>Owners always have full permissions.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="about-card">
+                <div class="about-card-header">
+                  <i class="fas fa-university"></i>
+                  <h4>Banking & Revenue</h4>
+                </div>
+                <div class="about-card-body">
+                  <ul class="about-list">
+                    <li>View store balance and transactions in <strong>Banking</strong>.</li>
+                    <li>Customer purchases add revenue to the store account automatically.</li>
+                    <li>Deposit/withdraw funds with your preferred payment type.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="about-card">
+                <div class="about-card-header">
+                  <i class="fas fa-truck"></i>
+                  <h4>Fleet & Deliveries</h4>
+                </div>
+                <div class="about-card-body">
+                  <ul class="about-list">
+                    <li>Buy vehicles in the <strong>Fleet</strong> tab for delivery missions.</li>
+                    <li>Vehicles must be <strong>stored</strong> to be available for ordering runs.</li>
+                    <li>Heavier trucks carry more stock but cost more.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="about-faq">
+              <div class="about-faq-header">
+                <i class="fas fa-question-circle"></i>
+                <h4>FAQ</h4>
+              </div>
+              <div class="about-faq-body">
+                <div class="faq-item">
+                  <div class="faq-q">How do unowned store prices work?</div>
+                  <div class="faq-a">Unowned shops use config-driven prices per location. Owners can override price and stock once purchased.</div>
+                </div>
+                <div class="faq-item">
+                  <div class="faq-q">Why can’t I order stock?</div>
+                  <div class="faq-a">You need a stored fleet vehicle and selected items within its capacity.</div>
+                </div>
+                <div class="faq-item">
+                  <div class="faq-q">Who can edit stock?</div>
+                  <div class="faq-a">Managers and Owners. Employees have limited access.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `
+    }
+
     if (currentTab === 'shop') {
       const items = state.items || []
       const cart = state.cart || []
@@ -1536,6 +1635,9 @@
       } else if (newTab === 'fleet') {
         console.log('Switching to fleet tab')
         renderFleet()
+      } else if (newTab === 'about') {
+        console.log('Switching to about tab')
+        render()
       } else {
         render()
       }

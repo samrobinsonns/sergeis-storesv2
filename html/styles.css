@@ -422,6 +422,92 @@ button[data-act="add"]:hover, #checkout:hover {
   animation: fade 0.3s ease;
 }
 
+/* About Tab Styling */
+.about-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.about-hero {
+  background: linear-gradient(135deg, rgba(220,38,38,0.15), rgba(59,130,246,0.15));
+  border: 1px solid rgba(220,38,38,0.25);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.about-hero-text h2 {
+  margin: 0 0 6px 0;
+  color: var(--light-color);
+}
+
+.about-hero-text p {
+  margin: 0;
+  color: rgba(255,255,255,0.8);
+}
+
+.about-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.about-card {
+  background: rgba(17, 17, 17, 0.9);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.about-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.about-card-header i {
+  color: #dc2626;
+}
+
+.about-card-header h4 {
+  margin: 0;
+  color: var(--light-color);
+}
+
+.about-list {
+  margin: 0;
+  padding-left: 18px;
+  color: rgba(255,255,255,0.85);
+}
+
+.about-list li {
+  margin-bottom: 6px;
+}
+
+.about-faq {
+  background: rgba(17,17,17,0.9);
+  border: 1px solid rgba(220,38,38,0.2);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.about-faq-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.about-faq-header i { color: #dc2626; }
+
+.about-faq-header h4 { margin: 0; color: var(--light-color); }
+
+.faq-item { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.faq-item:last-child { border-bottom: none; }
+.faq-q { font-weight: 600; color: var(--light-color); margin-bottom: 4px; }
+.faq-a { color: rgba(255,255,255,0.8); }
+
 /* Shop-only layout styling */
 .shop-layout {
   display: flex;
