@@ -119,15 +119,15 @@
       }).join('')
       
       dialog.innerHTML = `
-        <div class="order-header">
-          <h3>Order Stock</h3>
+        <div class="order-header card-header">
+          <h3><i class="icon fas fa-truck-loading"></i>Order Stock</h3>
           <button class="close-order-btn" id="closeOrderBtn">
             <i class="fas fa-times"></i>
           </button>
         </div>
         <div class="order-body">
           <div class="order-section">
-            <h4>Select Vehicle</h4>
+            <h4><i class="icon fas fa-car"></i>Select Vehicle</h4>
             <select id="orderVehicleSelect" class="order-vehicle-select">
               <option value="">Choose a vehicle...</option>
               ${vehicleOptions}
@@ -138,13 +138,14 @@
           </div>
           
           <div class="order-section">
-            <h4>Select Items to Order</h4>
+            <h4><i class="icon fas fa-boxes"></i>Select Items to Order</h4>
             <div class="order-items-container">
               ${itemInputs}
             </div>
           </div>
           
           <div class="order-section">
+            <h4><i class="icon fas fa-receipt"></i>Order Summary</h4>
             <div class="order-summary" id="orderSummary" style="display: none;">
               <div class="summary-row">
                 <span>Total Units:</span>
@@ -162,13 +163,14 @@
           </div>
         </div>
         <div class="order-actions">
-          <button class="order-btn order-cancel" id="cancelOrderBtn">Cancel</button>
-          <button class="order-btn order-confirm" id="confirmOrderBtn" disabled>Start Delivery Mission</button>
+          <button class="order-btn order-cancel" id="cancelOrderBtn"><i class="fas fa-times"></i> Cancel</button>
+          <button class="order-btn order-confirm" id="confirmOrderBtn" disabled><i class="fas fa-play"></i> Start Delivery Mission</button>
         </div>
       `
       
       overlay.appendChild(dialog)
-      document.body.appendChild(overlay)
+      const container = document.querySelector('.ui-container') || document.body
+      container.appendChild(overlay)
       
       // Add event listeners for the order dialog
       addOrderDialogListeners(overlay, vehicles)

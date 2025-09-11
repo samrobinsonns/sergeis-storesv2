@@ -1925,11 +1925,8 @@ button[data-act="add"]:hover, #checkout:hover {
 
 /* Order Stock Dialog Styles */
 .order-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   background: rgba(0, 0, 0, 0.8);
   display: flex;
   align-items: center;
@@ -1939,10 +1936,10 @@ button[data-act="add"]:hover, #checkout:hover {
 }
 
 .order-dialog {
-  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
-  border: 1px solid rgba(79, 70, 229, 0.3);
+  background: rgba(17, 17, 17, 0.95);
+  border: 1px solid rgba(220, 38, 38, 0.25);
   border-radius: 12px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow);
   min-width: 600px;
   max-width: 800px;
   max-height: 90vh;
@@ -1961,25 +1958,20 @@ button[data-act="add"]:hover, #checkout:hover {
   }
 }
 
-.order-header {
-  padding: 20px 20px 15px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+
+.order-header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; }
 
 .order-header h3 {
   margin: 0;
-  color: #fff;
-  font-size: 1.4rem;
-  font-weight: 600;
+  color: var(--light-color);
+  font-size: 1.1rem;
+  font-weight: 700;
 }
 
 .close-order-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  color: rgba(255, 255, 255, 0.8);
+  background: rgba(220, 38, 38, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  color: #fff;
   width: 32px;
   height: 32px;
   border-radius: 6px;
@@ -1990,47 +1982,17 @@ button[data-act="add"]:hover, #checkout:hover {
   justify-content: center;
 }
 
-.close-order-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
-}
+.close-order-btn:hover { filter: brightness(1.05); }
 
-.order-body {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
+.order-body { padding: 20px; display: flex; flex-direction: column; gap: 18px; }
 
-.order-section h4 {
-  margin: 0 0 12px 0;
-  color: #fff;
-  font-size: 1.1rem;
-  font-weight: 600;
-}
+.order-section h4 { margin: 0 0 10px 0; color: var(--light-color); font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 
-.order-vehicle-select {
-  width: 100%;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  color: #fff;
-  padding: 12px 16px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
+.order-vehicle-select { width: 100%; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); padding: 10px 14px; font-size: 0.95rem; cursor: pointer; transition: all 0.2s ease; }
 
-.order-vehicle-select:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(79, 70, 229, 0.5);
-}
+.order-vehicle-select:hover { border-color: rgba(220, 38, 38, 0.5); }
 
-.order-vehicle-select:focus {
-  outline: 2px solid rgba(79, 70, 229, 0.5);
-  outline-offset: 2px;
-  background: rgba(255, 255, 255, 0.15);
-}
+.order-vehicle-select:focus { outline: 2px solid rgba(220, 38, 38, 0.5); outline-offset: 2px; }
 
 .capacity-info {
   margin-top: 8px;
@@ -2052,32 +2014,15 @@ button[data-act="add"]:hover, #checkout:hover {
   gap: 12px;
 }
 
-.order-item {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 16px;
-  transition: all 0.2s ease;
-}
+.order-item { background: rgba(17, 17, 17, 0.9); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: 10px; padding: 14px; transition: all 0.2s ease; }
 
-.order-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(79, 70, 229, 0.3);
-}
+.order-item:hover { border-color: rgba(220, 38, 38, 0.4); transform: translateY(-1px); }
 
 .order-item-header {
   margin-bottom: 12px;
 }
 
-.order-item-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #fff;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-}
+.order-item-label { display: flex; align-items: center; gap: 8px; color: var(--light-color); font-size: 0.95rem; font-weight: 500; cursor: pointer; }
 
 .order-item-checkbox {
   width: 18px;
@@ -2091,22 +2036,9 @@ button[data-act="add"]:hover, #checkout:hover {
   gap: 12px;
 }
 
-.order-item-controls label {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 0.9rem;
-  min-width: 60px;
-}
+.order-item-controls label { color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; min-width: 60px; }
 
-.order-item-quantity {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  color: #fff;
-  padding: 8px 12px;
-  font-size: 0.9rem;
-  width: 80px;
-  transition: all 0.2s ease;
-}
+.order-item-quantity { background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); padding: 8px 12px; font-size: 0.9rem; width: 80px; transition: all 0.2s ease; }
 
 .order-item-quantity:enabled:hover {
   background: rgba(255, 255, 255, 0.15);
@@ -2124,12 +2056,7 @@ button[data-act="add"]:hover, #checkout:hover {
   cursor: not-allowed;
 }
 
-.order-summary {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 16px;
-}
+.order-summary { background: rgba(17, 17, 17, 0.9); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: 10px; padding: 16px; }
 
 .summary-row {
   display: flex;
@@ -2144,13 +2071,7 @@ button[data-act="add"]:hover, #checkout:hover {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.order-actions {
-  padding: 15px 20px 20px 20px;
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
+.order-actions { padding: 15px 20px 20px 20px; display: flex; gap: 12px; justify-content: flex-end; border-top: 1px solid rgba(220, 38, 38, 0.2); }
 
 .order-btn {
   padding: 12px 24px;
