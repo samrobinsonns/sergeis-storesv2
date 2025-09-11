@@ -5,6 +5,54 @@ local function getCitizenId(src)
   return Player and Player.PlayerData and Player.PlayerData.citizenid or nil
 end
 
+-- Normalize Config.Locations[code].allowedItems into
+-- 1) a flat array of item codes, and
+-- 2) a map of per-item price overrides, and
+-- 3) a map of per-item label overrides
+-- Supported config shapes:
+-- - { 'water', 'bread' }
+-- - { { item = 'water', price = 5, label = 'Water' }, { item = 'bread', price = 7 } }
+-- - { water = 5, bread = 7 }
+-- - { water = { price = 5, label = 'Water' }, bread = { price = 7 } }
+local function normalizeAllowedItems(input)
+  local items, prices, labels = {}, {}, {}
+  if type(input) ~= 'table' then return items, prices, labels end
+
+  local hasStringKeys = false
+  for k, _ in pairs(input) do
+    if type(k) ~= 'number' then hasStringKeys = true break end
+  end
+
+  if hasStringKeys then
+    for item, v in pairs(input) do
+      if type(item) == 'string' then
+        items[#items + 1] = item
+        if type(v) == 'number' then
+          prices[item] = v
+        elseif type(v) == 'table' then
+          if v.price then prices[item] = tonumber(v.price) end
+          if v.label then labels[item] = v.label end
+        end
+      end
+    end
+  else
+    for _, v in ipairs(input) do
+      if type(v) == 'string' then
+        items[#items + 1] = v
+      elseif type(v) == 'table' then
+        local code = v.item or v[1]
+        if code then
+          items[#items + 1] = code
+          if v.price then prices[code] = tonumber(v.price) end
+          if v.label then labels[code] = v.label end
+        end
+      end
+    end
+  end
+
+  return items, prices, labels
+end
+
 QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(source, cb, storeId)
   local items = DB.GetStock(storeId)
   local store = StoresCache[storeId]
@@ -19,7 +67,8 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(sourc
     print('DEBUG getStock: location_code =', store.location_code)
     print('DEBUG getStock: location config =', json.encode(loc or {}))
     if loc and loc.allowedItems then 
-      allowed = loc.allowedItems
+      local allowedList = normalizeAllowedItems(loc.allowedItems)
+      allowed = allowedList
       print('DEBUG getStock: allowedItems =', json.encode(allowed))
     end
   else
@@ -38,10 +87,11 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getUnownedStock', functio
   
   -- Generate stock for unowned stores with reasonable default values
   local items = {}
-  for _, item in ipairs(loc.allowedItems) do
+  local allowedList, priceOverrides, labelOverrides = normalizeAllowedItems(loc.allowedItems)
+  for _, item in ipairs(allowedList) do
     local sharedItem = QBCore.Shared and QBCore.Shared.Items and QBCore.Shared.Items[item]
-    local label = (sharedItem and sharedItem.label) or item
-    local price = (sharedItem and sharedItem.price) or 10 -- Default price
+    local label = labelOverrides[item] or (sharedItem and sharedItem.label) or item
+    local price = priceOverrides[item] or (sharedItem and sharedItem.price) or 10 -- Default price
     table.insert(items, {
       item = item,
       label = label,
@@ -229,7 +279,8 @@ RegisterNetEvent('sergeis-stores:server:checkoutUnowned', function(locationCode,
 
   -- Verify items are allowed for this location
   local allowedSet = {}
-  for _, item in ipairs(loc.allowedItems) do allowedSet[item] = true end
+  local allowedList = normalizeAllowedItems(loc.allowedItems)
+  for _, item in ipairs(allowedList) do allowedSet[item] = true end
   
   for _, entry in ipairs(cart or {}) do
     local want = math.abs(tonumber(entry.qty) or 0)
@@ -269,7 +320,8 @@ RegisterNetEvent('sergeis-stores:server:upsertStockAllowed', function(storeId, i
   local locCfg = store and store.location_code and Config.Locations[store.location_code]
   if locCfg and locCfg.allowedItems then
     local ok = false
-    for _, allowed in ipairs(locCfg.allowedItems) do
+    local allowedList = normalizeAllowedItems(locCfg.allowedItems)
+    for _, allowed in ipairs(allowedList) do
       if allowed == item then ok = true break end
     end
     if not ok then

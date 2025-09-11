@@ -75,7 +75,12 @@ Config.Locations = {
   ["little_seoul_247"] = {
     label = "247 Little Seoul",
     price = 250000,
-    allowedItems = { 'water', 'bread', 'sandwich', 'phone' },
+    allowedItems = {
+      water = 5,
+      bread = 7,
+      sandwich = 12,
+      phone = 250
+    },
     pickup = {
       location = vector4(-722.0473, -926.8512, 19.0170, 121.3623), -- Docks pickup location
       label = "Docks Warehouse"
@@ -91,7 +96,11 @@ Config.Locations = {
   ["paleto_247"] = {
     label = "247 Paleto Blvd",
     price = 225000,
-    allowedItems = { 'water', 'bread', 'sandwich' },
+    allowedItems = {
+      water = 5,
+      bread = 7,
+      sandwich = 12
+    },
     pickup = {
       location = vector4(-428.54, 6162.37, 31.48, 225.0), -- Paleto warehouse
       label = "Paleto Supply Depot"
