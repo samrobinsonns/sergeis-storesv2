@@ -38,7 +38,8 @@ server_scripts {
   'server/sv_store.lua',
   'server/sv_fleet.lua',
   'server/sv_employees_banking.lua',
-  'server/sv_stock_orders.lua'
+  'server/sv_stock_orders.lua',
+  'server/sv_notifications.lua'
 }
 
 dependencies {
@@ -47,6 +48,10 @@ dependencies {
   'qb-target',
   'ox_target',
   'qb-vehiclekeys'
+}
+
+optional_dependencies {
+  'lb-phone'
 }
 
 

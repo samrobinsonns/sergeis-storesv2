@@ -139,27 +139,43 @@ RegisterNetEvent('sergeis-stores:client:startStockMission', function(missionData
     
     -- Create pickup blip
     pickupBlip = createBlip(missionData.pickupLocation, 478, 2, 'Stock Pickup: ' .. missionData.pickupLabel)
+    -- Enable GPS route to pickup
+    SetBlipRoute(pickupBlip, true)
+    SetBlipRouteColour(pickupBlip, 2)
+    SetNewWaypoint(missionData.pickupLocation.x, missionData.pickupLocation.y)
     
     QBCore.Functions.Notify('Mission started! Drive to ' .. missionData.pickupLabel .. ' to collect stock', 'success')
     
     -- Start proximity checking for pickup
     CreateThread(function()
       while currentMission and currentMission.orderId == missionData.orderId do
+        local waitMs = 250
         local playerCoords = GetEntityCoords(PlayerPedId())
         local pickupCoords = vector3(missionData.pickupLocation.x, missionData.pickupLocation.y, missionData.pickupLocation.z)
         local distance = #(playerCoords - pickupCoords)
-        
-        if distance < 5.0 and currentMission.status ~= 'delivery' then
-          -- Show pickup prompt
-          if IsControlJustReleased(0, 38) then -- E key
-            TriggerServerEvent('sergeis-stores:server:completePickup', missionData.orderId)
+
+        if distance < 50.0 and currentMission.status ~= 'delivery' then
+          -- Draw a ground marker to indicate the pickup point
+          DrawMarker(
+            1,
+            pickupCoords.x, pickupCoords.y, pickupCoords.z - 1.0,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            1.6, 1.6, 0.8,
+            220, 38, 38, 160,
+            false, true, 2, false, nil, nil, false
+          )
+          waitMs = 0 -- render smoothly when nearby
+          if distance < 5.0 then
+            -- Draw prompt text each frame and handle input
+            DrawText3D(pickupCoords.x, pickupCoords.y, pickupCoords.z + 1.0, "[E] Collect Stock")
+            if IsControlJustReleased(0, 38) then -- E key
+              TriggerServerEvent('sergeis-stores:server:completePickup', missionData.orderId)
+            end
           end
-          
-          -- Draw text
-          DrawText3D(pickupCoords.x, pickupCoords.y, pickupCoords.z + 1.0, "[E] Collect Stock")
         end
-        
-        Wait(100)
+
+        Wait(waitMs)
       end
     end)
   else
@@ -185,27 +201,43 @@ RegisterNetEvent('sergeis-stores:client:updateMissionStatus', function(status, d
     
     -- Create delivery blip
     deliveryBlip = createBlip(deliveryLocation, 478, 3, 'Store Delivery')
+    -- Enable GPS route to delivery
+    SetBlipRoute(deliveryBlip, true)
+    SetBlipRouteColour(deliveryBlip, 3)
+    SetNewWaypoint(deliveryLocation.x, deliveryLocation.y)
     
     QBCore.Functions.Notify('Stock loaded! Return to store to complete delivery', 'success')
     
     -- Start proximity checking for delivery
     CreateThread(function()
       while currentMission and currentMission.status == 'delivery' do
+        local waitMs = 250
         local playerCoords = GetEntityCoords(PlayerPedId())
         local deliveryCoords = vector3(deliveryLocation.x, deliveryLocation.y, deliveryLocation.z)
         local distance = #(playerCoords - deliveryCoords)
-        
-        if distance < 5.0 then
-          -- Show delivery prompt
-          if IsControlJustReleased(0, 38) then -- E key
-            TriggerServerEvent('sergeis-stores:server:completeDelivery', currentMission.orderId)
+
+        if distance < 50.0 then
+          -- Draw a ground marker to indicate the delivery point
+          DrawMarker(
+            1,
+            deliveryCoords.x, deliveryCoords.y, deliveryCoords.z - 1.0,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            1.6, 1.6, 0.8,
+            34, 197, 94, 160,
+            false, true, 2, false, nil, nil, false
+          )
+          waitMs = 0 -- render smoothly when nearby
+          if distance < 5.0 then
+            -- Draw prompt text each frame and handle input
+            DrawText3D(deliveryCoords.x, deliveryCoords.y, deliveryCoords.z + 1.0, "[E] Deliver Stock")
+            if IsControlJustReleased(0, 38) then -- E key
+              TriggerServerEvent('sergeis-stores:server:completeDelivery', currentMission.orderId)
+            end
           end
-          
-          -- Draw text
-          DrawText3D(deliveryCoords.x, deliveryCoords.y, deliveryCoords.z + 1.0, "[E] Deliver Stock")
         end
-        
-        Wait(100)
+
+        Wait(waitMs)
       end
     end)
   end

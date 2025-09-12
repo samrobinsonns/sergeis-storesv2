@@ -2,6 +2,15 @@ local QBCore = exports['qb-core']:GetCoreObject()
 
 local uiOpen = false
 
+local ALL_MANAGE_TABS = { 'stock', 'manage', 'fleet', 'upgrades', 'about', 'employees', 'banking' }
+
+local function tabsForPermission(perm)
+  if perm and perm >= (StorePermission and StorePermission.MANAGER or 2) then
+    return ALL_MANAGE_TABS
+  end
+  return { 'stock' }
+end
+
 local function openUI(tab, data)
   if uiOpen then return end
   uiOpen = true
@@ -22,15 +31,35 @@ RegisterNUICallback('close', function(_, cb)
 end)
 
 RegisterNetEvent('sergeis-stores:client:openManage', function(storeId)
-  openUI('manage', { storeId = storeId, allowedTabs = { 'stock', 'manage', 'fleet', 'upgrades', 'about', 'employees', 'banking' } })
+  QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(map)
+    local perm = map and map[storeId] or 0
+    local allowed = tabsForPermission(perm)
+    if #allowed == 1 and allowed[1] == 'stock' then
+      -- Employees: redirect to stock view which fetches items
+      TriggerEvent('sergeis-stores:client:openStock', storeId)
+      return
+    end
+    openUI('manage', { storeId = storeId, allowedTabs = allowed })
+  end)
 end)
 
 RegisterNetEvent('sergeis-stores:client:openStock', function(storeId)
   QBCore.Functions.TriggerCallback('sergeis-stores:server:getStock', function(payload)
-    print('DEBUG client openStock: storeId =', storeId)
-    print('DEBUG client openStock: payload =', json.encode(payload or {}))
-    print('DEBUG client openStock: allowedItems =', json.encode(payload.allowedItems or {}))
-    openUI('stock', { storeId = storeId, items = payload.items or {}, allowedItems = payload.allowedItems or {}, usedCapacity = payload.usedCapacity, maxCapacity = payload.maxCapacity, allowedTabs = { 'stock', 'manage', 'fleet', 'upgrades', 'about', 'employees', 'banking' } })
+    QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(map)
+      local perm = map and map[storeId] or 0
+      local allowed = tabsForPermission(perm)
+      print('DEBUG client openStock: storeId =', storeId)
+      print('DEBUG client openStock: payload =', json.encode(payload or {}))
+      print('DEBUG client openStock: allowedItems =', json.encode(payload.allowedItems or {}))
+      openUI('stock', {
+        storeId = storeId,
+        items = payload.items or {},
+        allowedItems = payload.allowedItems or {},
+        usedCapacity = payload.usedCapacity,
+        maxCapacity = payload.maxCapacity,
+        allowedTabs = allowed
+      })
+    end)
   end, storeId)
 end)
 
@@ -54,9 +83,18 @@ RegisterNetEvent('sergeis-stores:client:openShop', function(storeId)
 end)
 
 RegisterNetEvent('sergeis-stores:client:openFleet', function(storeId)
-  QBCore.Functions.TriggerCallback('sergeis-stores:server:getVehicles', function(vehicles)
-    openUI('fleet', { storeId = storeId, vehicles = vehicles, allowedTabs = { 'stock', 'manage', 'fleet', 'upgrades', 'about', 'employees', 'banking' } })
-  end, storeId)
+  QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(map)
+    local perm = map and map[storeId] or 0
+    local allowed = tabsForPermission(perm)
+    if #allowed == 1 and allowed[1] == 'stock' then
+      -- Employees are not allowed into fleet; show stock instead
+      TriggerEvent('sergeis-stores:client:openStock', storeId)
+      return
+    end
+    QBCore.Functions.TriggerCallback('sergeis-stores:server:getVehicles', function(vehicles)
+      openUI('fleet', { storeId = storeId, vehicles = vehicles, allowedTabs = allowed })
+    end, storeId)
+  end)
 end)
 -- Upgrades
 RegisterNUICallback('purchaseCapacityUpgrade', function(data, cb)
@@ -71,6 +109,28 @@ end)
 -- Get capacity upgrades from Config
 RegisterNUICallback('getCapacityUpgrades', function(_, cb)
   cb({ upgrades = Config.CapacityUpgrades or {} })
+end)
+
+RegisterNUICallback('getPurchasedUpgrades', function(data, cb)
+  local storeId = data.storeId
+  if storeId then
+    QBCore.Functions.TriggerCallback('sergeis-stores:server:getPurchasedUpgrades', function(map)
+      cb({ purchased = map or {} })
+    end, storeId)
+  else
+    cb({ purchased = {} })
+  end
+end)
+
+RegisterNUICallback('getStockOrderPrices', function(data, cb)
+  local storeId = data.storeId
+  if storeId then
+    QBCore.Functions.TriggerCallback('sergeis-stores:server:getStockOrderPrices', function(payload)
+      cb(payload or { override = {}, global = {}, base = 5 })
+    end, storeId)
+  else
+    cb({ override = {}, global = {}, base = 5 })
+  end
 end)
 
 RegisterNetEvent('sergeis-stores:client:openUnownedShop', function(locationCode)
@@ -168,12 +228,37 @@ RegisterNUICallback('fireEmployee', function(data, cb)
   cb(1)
 end)
 
+-- Nearby players for hire UI
+RegisterNUICallback('getNearbyPlayers', function(data, cb)
+  local radius = tonumber(data.radius) or 5.0
+  QBCore.Functions.TriggerCallback('sergeis-stores:server:getNearbyPlayers', function(payload)
+    cb(payload or { players = {} })
+  end, radius)
+end)
+
 RegisterNUICallback('updateEmployeePermission', function(data, cb)
   local storeId = data.storeId
   local citizenid = data.citizenid
   local permission = tonumber(data.permission) or 1
   if storeId and citizenid then
     TriggerServerEvent('sergeis-stores:server:updateEmployeePermission', storeId, citizenid, permission)
+  end
+  cb(1)
+end)
+
+RegisterNUICallback('resetEmployeeStats', function(data, cb)
+  local storeId = data.storeId
+  if storeId then
+    TriggerServerEvent('sergeis-stores:server:resetEmployeeStats', storeId)
+  end
+  cb(1)
+end)
+
+RegisterNUICallback('resetEmployeeStat', function(data, cb)
+  local storeId = data.storeId
+  local citizenid = data.citizenid
+  if storeId and citizenid then
+    TriggerServerEvent('sergeis-stores:server:resetEmployeeStat', storeId, citizenid)
   end
   cb(1)
 end)
@@ -211,6 +296,53 @@ RegisterNUICallback('sellVehicle', function(data, cb)
   local vehicleId = tonumber(data.vehicleId)
   if vehicleId then
     TriggerServerEvent('sergeis-stores:server:sellVehicle', vehicleId)
+  end
+  cb(1)
+end)
+
+-- Store info & renaming
+RegisterNUICallback('getStoreInfo', function(data, cb)
+  local storeId = data.storeId
+  if storeId then
+    QBCore.Functions.TriggerCallback('sergeis-stores:server:getStoreInfo', function(info)
+      cb(info or { id = storeId, name = ('Store ' .. tostring(storeId)) })
+    end, storeId)
+  else
+    cb({ id = 0, name = 'Store' })
+  end
+end)
+
+RegisterNUICallback('updateStoreName', function(data, cb)
+  local storeId = data.storeId
+  local newName = data.newName or ''
+  if storeId and newName and newName ~= '' then
+    TriggerServerEvent('sergeis-stores:server:updateStoreName', storeId, newName)
+  end
+  cb(1)
+end)
+
+RegisterNUICallback('updateStoreBlip', function(data, cb)
+  local storeId = data.storeId
+  local spriteId = tonumber(data.spriteId)
+  if storeId and spriteId then
+    TriggerServerEvent('sergeis-stores:server:updateStoreBlip', storeId, spriteId, nil)
+  end
+  cb(1)
+end)
+
+RegisterNUICallback('sellStore', function(data, cb)
+  local storeId = data.storeId
+  if storeId then
+    TriggerServerEvent('sergeis-stores:server:sellStore', storeId)
+  end
+  cb(1)
+end)
+
+RegisterNUICallback('transferStore', function(data, cb)
+  local storeId = data.storeId
+  local targetCitizenId = data.citizenid
+  if storeId and targetCitizenId and targetCitizenId ~= '' then
+    TriggerServerEvent('sergeis-stores:server:transferStore', storeId, targetCitizenId)
   end
   cb(1)
 end)
@@ -293,6 +425,17 @@ RegisterNUICallback('startStockOrder', function(data, cb)
     print('Failed validation - storeId:', storeId, 'vehicleId:', vehicleId, 'orderItems count:', #orderItems)
   end
   cb(1)
+end)
+
+RegisterNUICallback('getLocationInfo', function(data, cb)
+  local code = data.locationCode
+  if code then
+    QBCore.Functions.TriggerCallback('sergeis-stores:server:getLocationInfo', function(info)
+      cb(info or { label = code })
+    end, code)
+  else
+    cb({ label = '' })
+  end
 end)
 
 

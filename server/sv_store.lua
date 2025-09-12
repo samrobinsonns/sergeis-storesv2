@@ -2,7 +2,11 @@ local QBCore = exports['qb-core']:GetCoreObject()
 
 local function getCitizenId(src)
   local Player = QBCore.Functions.GetPlayer(src)
-  return Player and Player.PlayerData and Player.PlayerData.citizenid or nil
+  if not Player or not Player.PlayerData then return nil end
+  local idField = (Config and Config.IdentifierField) or 'citizenid'
+  local id = Player.PlayerData[idField]
+  if not id or id == '' then id = Player.PlayerData.citizenid or Player.PlayerData.stateid end
+  return id
 end
 
 -- Normalize Config.Locations[code].allowedItems into
@@ -75,7 +79,7 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(sourc
       print('DEBUG getStock: allowedItems =', json.encode(allowed))
     end
     if loc then
-      local baseMax = tonumber(loc.maxCapacity) or 0
+      local baseMax = tonumber(loc.maxCapacity) or tonumber(loc.capacity) or 0
       local upgraded = tonumber(store.capacity) or 0
       maxCapacity = baseMax + upgraded
     end
@@ -84,6 +88,138 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(sourc
   end
   
   cb({ items = items, allowedItems = allowed, usedCapacity = usedCapacity, maxCapacity = maxCapacity })
+end)
+
+-- Get single store info (name, id)
+QBCore.Functions.CreateCallback('sergeis-stores:server:getStoreInfo', function(source, cb, storeId)
+  local s = StoresCache and StoresCache[storeId]
+  if not s then
+    cb({ id = storeId, name = ('Store %d'):format(storeId) })
+    return
+  end
+  cb({ id = storeId, name = s.name or ('Store %d'):format(storeId) })
+end)
+
+-- Update store name (Owner only)
+RegisterNetEvent('sergeis-stores:server:updateStoreName', function(storeId, newName)
+  local src = source
+  local cid = getCitizenId(src)
+  if not cid then return end
+  newName = tostring(newName or ''):sub(1, 100)
+  if newName:gsub('%s+', '') == '' then
+    TriggerClientEvent('QBCore:Notify', src, 'Invalid store name', 'error')
+    return
+  end
+  local store = StoresCache[storeId]
+  if not store then
+    TriggerClientEvent('QBCore:Notify', src, 'Store not found', 'error')
+    return
+  end
+  local level = DB.GetEmployeePermission(storeId, cid)
+  if cid == store.owner_cid then level = StorePermission.OWNER end
+  if not HasStorePermission(level, StorePermission.OWNER) then
+    TriggerClientEvent('QBCore:Notify', src, 'Only owners can rename stores', 'error')
+    return
+  end
+  MySQL.update.await('UPDATE sergeis_stores SET name = ? WHERE id = ?', { newName, storeId })
+  if StoresCache[storeId] then StoresCache[storeId].name = newName end
+  TriggerClientEvent('QBCore:Notify', src, 'Store name updated', 'success')
+  TriggerEvent('sergeis-stores:server:refreshClients')
+end)
+
+-- Update store blip (sprite id or custom image URL). Owner/Manager only
+RegisterNetEvent('sergeis-stores:server:updateStoreBlip', function(storeId, spriteId, imageUrl)
+  local src = source
+  local cid = getCitizenId(src)
+  if not cid then return end
+  local store = StoresCache[storeId]
+  if not store then
+    TriggerClientEvent('QBCore:Notify', src, 'Store not found', 'error')
+    return
+  end
+  local level = DB.GetEmployeePermission(storeId, cid)
+  if cid == store.owner_cid then level = StorePermission.OWNER end
+  if not HasStorePermission(level, StorePermission.MANAGER) then
+    TriggerClientEvent('QBCore:Notify', src, 'No permission', 'error')
+    return
+  end
+  local sprite = tonumber(spriteId) or nil
+  DB.UpdateStoreBlip(storeId, sprite, nil)
+  if StoresCache[storeId] then
+    StoresCache[storeId].blip_sprite = sprite
+    StoresCache[storeId].blip_image_url = nil
+  end
+  TriggerClientEvent('QBCore:Notify', src, 'Blip updated', 'success')
+  TriggerEvent('sergeis-stores:server:refreshClients')
+end)
+
+-- Sell store (Owner only): resets to unowned and refunds 75% of purchase price
+RegisterNetEvent('sergeis-stores:server:sellStore', function(storeId)
+  local src = source
+  local cid = getCitizenId(src)
+  if not cid then return end
+  local store = StoresCache[storeId]
+  if not store then
+    TriggerClientEvent('QBCore:Notify', src, 'Store not found', 'error')
+    return
+  end
+  if store.owner_cid ~= cid then
+    TriggerClientEvent('QBCore:Notify', src, 'Only the owner can sell this store', 'error')
+    return
+  end
+  local cfg = store.location_code and Config.Locations[store.location_code]
+  local price = cfg and tonumber(cfg.price) or 0
+  local refund = math.floor(price * 0.75)
+  -- Transfer refund to player bank
+  local Player = QBCore.Functions.GetPlayer(src)
+  if Player and refund > 0 then
+    Player.Functions.AddMoney('bank', refund, 'store-sell-refund')
+  end
+  -- Delete store row: cascades will remove employees/items/tx per schema
+  DB.DeleteStore(storeId)
+  -- Refresh caches and clients
+  LoadStores()
+  TriggerClientEvent('QBCore:Notify', src, ('Store sold for $%s'):format(refund), 'success')
+  TriggerEvent('sergeis-stores:server:refreshClients')
+end)
+
+-- Transfer store to another player (Owner only)
+RegisterNetEvent('sergeis-stores:server:transferStore', function(storeId, targetCitizenId)
+  local src = source
+  local cid = getCitizenId(src)
+  if not cid then return end
+  local store = StoresCache[storeId]
+  if not store then
+    TriggerClientEvent('QBCore:Notify', src, 'Store not found', 'error')
+    return
+  end
+  if store.owner_cid ~= cid then
+    TriggerClientEvent('QBCore:Notify', src, 'Only the owner can transfer this store', 'error')
+    return
+  end
+  -- Validate target exists
+  local idField = (Config and Config.IdentifierField) or 'citizenid'
+  local row = MySQL.single.await(('SELECT %s FROM players WHERE %s = ?'):format(idField, idField), { targetCitizenId })
+  if not row then
+    TriggerClientEvent('QBCore:Notify', src, 'Target player not found', 'error')
+    return
+  end
+  -- Enforce single-store ownership: target cannot already own a store
+  for _, s in pairs(StoresCache) do
+    if s.owner_cid == targetCitizenId then
+      TriggerClientEvent('QBCore:Notify', src, 'Target already owns a store', 'error')
+      return
+    end
+  end
+  DB.SetStoreOwner(storeId, targetCitizenId)
+  StoresCache[storeId].owner_cid = targetCitizenId
+  TriggerClientEvent('QBCore:Notify', src, 'Store transferred', 'success')
+  -- Notify target if online
+  local Target = QBCore.Functions.GetPlayerByCitizenId(targetCitizenId)
+  if Target then
+    TriggerClientEvent('QBCore:Notify', Target.PlayerData.source, 'A store has been transferred to you', 'success')
+  end
+  TriggerEvent('sergeis-stores:server:refreshClients')
 end)
 
 -- Purchase capacity upgrade
@@ -108,6 +244,12 @@ RegisterNetEvent('sergeis-stores:server:purchaseCapacityUpgrade', function(store
     TriggerClientEvent('QBCore:Notify', src, 'No permission', 'error')
     return
   end
+  -- Prevent re-purchasing the same tier
+  local purchased = DB.GetPurchasedUpgrades(storeId)
+  if purchased[tier] then
+    TriggerClientEvent('QBCore:Notify', src, 'Upgrade already purchased', 'error')
+    return
+  end
   local upgrade = Config.CapacityUpgrades[tier]
   local price = tonumber(upgrade.price) or 0
   local increase = tonumber(upgrade.increase) or 0
@@ -127,6 +269,7 @@ RegisterNetEvent('sergeis-stores:server:purchaseCapacityUpgrade', function(store
   store.capacity = (store.capacity or 0) + increase
   -- Record transaction
   DB.RecordTransaction(storeId, cid, -price, { type = 'capacity_upgrade', tier = tier, increase = increase, description = 'Capacity upgrade' })
+  DB.AddPurchasedUpgrade(storeId, tier)
   TriggerClientEvent('QBCore:Notify', src, ('Capacity increased by %d'):format(increase), 'success')
   TriggerEvent('sergeis-stores:server:refreshClients')
 end)
@@ -177,6 +320,38 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getMyStorePerms', functio
     end
   end
   cb(map)
+end)
+
+QBCore.Functions.CreateCallback('sergeis-stores:server:getPurchasedUpgrades', function(source, cb, storeId)
+  local map = DB.GetPurchasedUpgrades(storeId) or {}
+  -- Convert numeric keys to string keys to avoid JSON array auto-conversion
+  local out = {}
+  for k, v in pairs(map) do
+    out[tostring(k)] = true
+  end
+  cb(out)
+end)
+
+-- Get config location info (unowned stores)
+QBCore.Functions.CreateCallback('sergeis-stores:server:getLocationInfo', function(source, cb, locationCode)
+  local loc = Config.Locations[locationCode]
+  if loc then
+    cb({ label = loc.label or locationCode, price = tonumber(loc.price) or 0 })
+  else
+    cb({ label = locationCode, price = 0 })
+  end
+end)
+
+-- Get stock order prices for a store (location override -> global -> base)
+QBCore.Functions.CreateCallback('sergeis-stores:server:getStockOrderPrices', function(source, cb, storeId)
+  local store = StoresCache[storeId]
+  local override = {}
+  if store and store.location_code and Config.Locations[store.location_code] and Config.Locations[store.location_code].stockCosts then
+    override = Config.Locations[store.location_code].stockCosts
+  end
+  local global = (Config.StockOrdering and Config.StockOrdering.itemPrices) or {}
+  local base = (Config.StockOrdering and Config.StockOrdering.basePricePerUnit) or 5
+  cb({ override = override, global = global, base = base })
 end)
 
 RegisterNetEvent('sergeis-stores:server:addEmployee', function(storeId, targetCid, perm)

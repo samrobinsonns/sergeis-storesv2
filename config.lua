@@ -15,6 +15,9 @@ Config.Interact = {
 -- Default payment method when purchasing from the cart
 Config.DefaultPayment = 'bank' -- 'cash' or 'bank'
 
+-- Player identifier field used by this resource. Set to 'citizenid' (default) or 'stateid'
+Config.IdentifierField = 'citizenid'
+
 -- Default dimensions for new stores created via command
 Config.DefaultStorePoint = {
   heading = 0.0,
@@ -40,14 +43,6 @@ Config.FleetVehicles = {
     category = 'delivery', 
     capacity = 500,
     description = 'Medium delivery truck for larger loads'
-  },
-  {
-    model = 'phantom',
-    label = 'Phantom Big Rig',
-    price = 75000,
-    category = 'heavy',
-    capacity = 1000,
-    description = 'Heavy duty truck for bulk deliveries'
   },
   {
     model = 'speedo',
@@ -83,7 +78,14 @@ Config.Locations = {
   ["little_seoul_247"] = {
     label = "247 Little Seoul",
     price = 250000,
-    maxCapacity = 1000,
+    maxCapacity = 100, -- Default Capacity that the Store Starts at.
+    -- Optional: per-item wholesale costs for ordering stock (overrides global StockOrdering.itemPrices)
+    stockCosts = {
+      water = 10,
+      bread = 10,
+      sandwich = 10,
+      phone = 100
+    },
     allowedItems = {
       water = 5,
       bread = 7,
@@ -91,7 +93,7 @@ Config.Locations = {
       phone = 250
     },
     pickup = {
-      location = vector4(-722.0473, -926.8512, 19.0170, 121.3623), -- Docks pickup location
+      location = vector4(-648.6824, -976.7209, 21.0295, 187.6819), -- Docks pickup location
       label = "Docks Warehouse"
     },
     points = {
@@ -106,6 +108,12 @@ Config.Locations = {
     label = "247 Paleto Blvd",
     price = 225000,
     maxCapacity = 800,
+    -- Optional: per-item wholesale costs for ordering stock at this location
+    stockCosts = {
+      water = 10,
+      bread = 10,
+      sandwich = 10
+    },
     allowedItems = {
       water = 5,
       bread = 7,
@@ -118,29 +126,17 @@ Config.Locations = {
     points = {
       purchase = vector4(1730.59, 6419.00, 35.04, 335.0),
       order    = vector4(1728.72, 6415.31, 35.04, 335.0),
-      manage   = vector4(1727.70, 6413.90, 35.04, 335.0),
+      manage   = vector4(1736.0387, 6419.7490, 35.0372, 347.2209),
       delivery = vector4(1730.59, 6419.00, 35.04, 335.0), -- Delivery point at store
       fleet    = vector4(1735.20, 6422.15, 35.04, 60.0) -- Fleet vehicle spawn point
     }
   }
 }
 
--- Stock ordering configuration
+-- Stock ordering configuration (per-store costs are used; keep limits here)
 Config.StockOrdering = {
-  -- Base price per unit for stock items (can be overridden per item)
-  basePricePerUnit = 5,
-  
-  -- Price multipliers for different item types
-  itemPrices = {
-    water = 3,
-    bread = 4,
-    sandwich = 8,
-    phone = 25
-  },
-  
   -- Maximum units per order (safety limit)
   maxUnitsPerOrder = 500,
-  
   -- Time limits for delivery missions (in seconds)
   pickupTimeLimit = 300, -- 5 minutes to reach pickup
   deliveryTimeLimit = 600 -- 10 minutes to deliver back to store

@@ -10,6 +10,7 @@ local purchasedLocations = {}
 local myPermissions = {}
 local isRefreshing = false
 local lastRefreshTime = 0
+local blips = {}
 
 -- Define helper functions early
 local function hasPerm(storeId, required)
@@ -18,6 +19,15 @@ local function hasPerm(storeId, required)
 end
 
 local function buildPublicTargets()
+  -- Rebuild map blips first
+  local function removeAllBlips()
+    for id, blip in pairs(blips) do
+      if DoesBlipExist(blip) then RemoveBlip(blip) end
+      blips[id] = nil
+    end
+  end
+  removeAllBlips()
+
   -- Remove only public zones (shopping, purchase, order)
   for id, zoneId in pairs(zones) do
     if string.match(id, '_shop$') or string.match(id, '_purchase$') or string.match(id, '_order$') then
@@ -37,6 +47,24 @@ local function buildPublicTargets()
     -- Shopping targets - always available to everyone
     local orderPoint = points.shop or points.order
     if orderPoint then
+      -- Create a blip at the order/shop point with the store's name
+      local bc = orderPoint
+      if type(orderPoint) == 'vector4' or orderPoint.w then bc = { x = orderPoint.x, y = orderPoint.y, z = orderPoint.z } end
+      local blip = AddBlipForCoord(bc.x + 0.0, bc.y + 0.0, bc.z + 0.0)
+      local sprite = (s.blip_sprite and tonumber(s.blip_sprite)) or 52
+      SetBlipSprite(blip, sprite)
+      SetBlipScale(blip, 0.8)
+      SetBlipColour(blip, 1)
+      SetBlipAsShortRange(blip, true)
+      BeginTextCommandSetBlipName('STRING')
+      local label = s.name
+      if (not label or label == '') and s.location_code and Config.Locations[s.location_code] then
+        label = Config.Locations[s.location_code].label or s.location_code
+      end
+      AddTextComponentString(label or 'Store')
+      EndTextCommandSetBlipName(blip)
+      blips[s.id] = blip
+
       local pid = ('store_%d_shop'):format(s.id)
       local shop = orderPoint
       local coords = shop
@@ -97,6 +125,20 @@ local function buildPublicTargets()
         local orderLength = (type(o) == 'table' and o.length) or 1.6
         local orderWidth = (type(o) == 'table' and o.width) or 1.6
         local orderHeight = (type(o) == 'table' and o.height) or 1.2
+
+        -- Create map blip for unowned store at order point using config label
+        local blipId = ('loc_%s'):format(code)
+        local blip = AddBlipForCoord(coords.x + 0.0, coords.y + 0.0, coords.z + 0.0)
+        local sprite = 52 -- config/unowned default
+        SetBlipSprite(blip, sprite)
+        SetBlipScale(blip, 0.8)
+        SetBlipColour(blip, 1)
+        SetBlipAsShortRange(blip, true)
+        BeginTextCommandSetBlipName('STRING')
+        AddTextComponentString(loc.label or code)
+        EndTextCommandSetBlipName(blip)
+        blips[blipId] = blip
+
         zones[pid] = StoreTarget.AddBoxZone(pid, coords, orderLength, orderWidth, {
           heading = coords.heading,
           height = orderHeight,
@@ -403,6 +445,10 @@ AddEventHandler('onResourceStop', function(res)
   for id, zoneId in pairs(zones) do
     StoreTarget.RemoveZone(zoneId)
     zones[id] = nil
+  end
+  for id, blip in pairs(blips) do
+    if DoesBlipExist(blip) then RemoveBlip(blip) end
+    blips[id] = nil
   end
 end)
 

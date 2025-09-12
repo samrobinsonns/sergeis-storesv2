@@ -10,7 +10,9 @@ local function buildClientStores()
       id = s.id,
       name = s.name,
       points = s.points or {},
-      location_code = s.location_code
+      location_code = s.location_code,
+      blip_sprite = s.blip_sprite,
+      blip_image_url = s.blip_image_url
     }
   end
 end
@@ -102,7 +104,11 @@ RegisterCommand('createstore', function(src, args)
   local points = { shop = point }
 
   local Player = QBCore.Functions.GetPlayer(src)
-  local ownerCid = Player and Player.PlayerData and Player.PlayerData.citizenid or 'unknown'
+  local ownerCid = 'unknown'
+  if Player and Player.PlayerData then
+    local idField = (Config and Config.IdentifierField) or 'citizenid'
+    ownerCid = Player.PlayerData[idField] or Player.PlayerData.citizenid or Player.PlayerData.stateid or 'unknown'
+  end
   local id = DB.CreateStore(name, ownerCid, points, nil)
   if id then
     LoadStores()
@@ -129,6 +135,16 @@ RegisterNetEvent('sergeis-stores:server:purchaseLocation', function(locationCode
     end
   end
 
+  -- Enforce single-store ownership per player
+  local idField = (Config and Config.IdentifierField) or 'citizenid'
+  local cid = Player.PlayerData[idField] or Player.PlayerData.citizenid or Player.PlayerData.stateid
+  for _, s in pairs(StoresCache) do
+    if s.owner_cid == cid then
+      TriggerClientEvent('QBCore:Notify', src, 'You already own a store', 'error')
+      return
+    end
+  end
+
   local price = tonumber(loc.price) or 0
   if price > 0 then
     if not Player.Functions.RemoveMoney('bank', price) then
@@ -137,7 +153,6 @@ RegisterNetEvent('sergeis-stores:server:purchaseLocation', function(locationCode
     end
   end
 
-  local cid = Player.PlayerData.citizenid
   local points = loc.points or {}
   -- Normalize vector points into serializable tables with heading
   local function normalizePoint(p, fallback)

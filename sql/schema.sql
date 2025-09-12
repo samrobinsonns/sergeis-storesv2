@@ -53,4 +53,26 @@ CREATE TABLE IF NOT EXISTS `sergeis_store_vehicles` (
 ALTER TABLE `sergeis_stores` 
   ADD COLUMN IF NOT EXISTS `capacity` INT NULL AFTER `location_code`;
 
+-- Optional map blip customization per store
+ALTER TABLE `sergeis_stores`
+  ADD COLUMN IF NOT EXISTS `blip_sprite` INT NULL AFTER `capacity`,
+  ADD COLUMN IF NOT EXISTS `blip_image_url` VARCHAR(255) NULL AFTER `blip_sprite`;
+
+-- Track purchased capacity upgrades per store (one row per tier)
+CREATE TABLE IF NOT EXISTS `sergeis_store_upgrades` (
+  `store_id` INT NOT NULL,
+  `tier` INT NOT NULL,
+  PRIMARY KEY (`store_id`, `tier`),
+  CONSTRAINT `fk_store_upg_store` FOREIGN KEY (`store_id`) REFERENCES `sergeis_stores` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Track employee activity stats (e.g. completed stock orders)
+CREATE TABLE IF NOT EXISTS `sergeis_store_employee_stats` (
+  `store_id` INT NOT NULL,
+  `citizenid` VARCHAR(50) NOT NULL,
+  `orders_completed` INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`store_id`, `citizenid`),
+  CONSTRAINT `fk_store_empstats_store` FOREIGN KEY (`store_id`) REFERENCES `sergeis_stores` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 

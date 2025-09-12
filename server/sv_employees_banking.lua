@@ -3,7 +3,11 @@ local QBCore = exports['qb-core']:GetCoreObject()
 
 local function getCitizenId(src)
   local Player = QBCore.Functions.GetPlayer(src)
-  return Player and Player.PlayerData and Player.PlayerData.citizenid or nil
+  if not Player or not Player.PlayerData then return nil end
+  local idField = (Config and Config.IdentifierField) or 'citizenid'
+  local id = Player.PlayerData[idField]
+  if not id or id == '' then id = Player.PlayerData.citizenid or Player.PlayerData.stateid end
+  return id
 end
 
 local function getTableKeys(t)
@@ -78,6 +82,13 @@ function registerEmployeeCallbacks()
       end
     end
     
+    -- Attach stats (orders completed)
+    local stats = DB.GetEmployeeStats(storeId)
+    local map = {}
+    for _, r in ipairs(stats or {}) do map[r.citizenid] = tonumber(r.orders_completed) or 0 end
+    for _, emp in ipairs(employees) do
+      emp.orders_completed = map[emp.citizenid] or 0
+    end
     return employees
   end)
   
@@ -89,6 +100,75 @@ function registerEmployeeCallbacks()
     cb({})
   end
 end)
+
+RegisterNetEvent('sergeis-stores:server:resetEmployeeStats', function(storeId)
+  local src = source
+  local currentCid = getCitizenId(src)
+  if not currentCid then return end
+  local currentLevel = DB.GetEmployeePermission(storeId, currentCid)
+  local store = StoresCache[storeId]
+  if store and store.owner_cid == currentCid then currentLevel = StorePermission.OWNER end
+  if not HasStorePermission(currentLevel, StorePermission.OWNER) then
+    TriggerClientEvent('QBCore:Notify', src, 'Only owners can reset stats', 'error')
+    return
+  end
+  DB.ResetEmployeeStats(storeId)
+  TriggerClientEvent('QBCore:Notify', src, 'Employee stats reset', 'success')
+end)
+
+RegisterNetEvent('sergeis-stores:server:resetEmployeeStat', function(storeId, citizenId)
+  local src = source
+  local currentCid = getCitizenId(src)
+  if not currentCid then return end
+  local currentLevel = DB.GetEmployeePermission(storeId, currentCid)
+  local store = StoresCache[storeId]
+  if store and store.owner_cid == currentCid then currentLevel = StorePermission.OWNER end
+  if not HasStorePermission(currentLevel, StorePermission.OWNER) then
+    TriggerClientEvent('QBCore:Notify', src, 'Only owners can reset stats', 'error')
+    return
+  end
+  DB.ResetEmployeeStat(storeId, citizenId)
+  TriggerClientEvent('QBCore:Notify', src, 'Employee stat reset', 'success')
+end)
+
+  -- Nearby players for hiring
+  QBCore.Functions.CreateCallback('sergeis-stores:server:getNearbyPlayers', function(source, cb, radius)
+    local src = source
+    local ped = GetPlayerPed(src)
+    if not ped or ped == 0 then cb({ players = {} }) return end
+    local coords = GetEntityCoords(ped)
+    local r = tonumber(radius) or 5.0
+
+    local function distance(a, b)
+      local dx = a.x - b.x
+      local dy = a.y - b.y
+      local dz = a.z - b.z
+      return math.sqrt(dx*dx + dy*dy + dz*dz)
+    end
+
+    local players = {}
+    for _, id in ipairs(GetPlayers()) do
+      local sid = tonumber(id)
+      if sid and sid ~= src then
+        local otherPed = GetPlayerPed(sid)
+        if otherPed and otherPed ~= 0 then
+          local ocoords = GetEntityCoords(otherPed)
+          if distance(coords, ocoords) <= r then
+            local Player = QBCore.Functions.GetPlayer(sid)
+            if Player and Player.PlayerData then
+              local idField = (Config and Config.IdentifierField) or 'citizenid'
+              local cid = Player.PlayerData[idField] or Player.PlayerData.citizenid or Player.PlayerData.stateid
+              local charinfo = Player.PlayerData.charinfo or {}
+              local name = ((charinfo.firstname or '') .. ' ' .. (charinfo.lastname or '')):gsub('^%s*(.-)%s*$', '%1')
+              table.insert(players, { serverId = sid, citizenid = cid, name = name })
+            end
+          end
+        end
+      end
+    end
+
+    cb({ players = players })
+  end)
 
 RegisterNetEvent('sergeis-stores:server:hireEmployee', function(storeId, citizenid, permission)
   local src = source
@@ -107,7 +187,8 @@ RegisterNetEvent('sergeis-stores:server:hireEmployee', function(storeId, citizen
   end
   
   -- Check if player exists
-  local result = MySQL.query.await('SELECT citizenid FROM players WHERE citizenid = ?', { citizenid })
+  local idField = (Config and Config.IdentifierField) or 'citizenid'
+  local result = MySQL.query.await(('SELECT %s FROM players WHERE %s = ?'):format(idField, idField), { citizenid })
   if not result or #result == 0 then
     TriggerClientEvent('QBCore:Notify', src, 'Player not found', 'error')
     return
@@ -123,6 +204,8 @@ RegisterNetEvent('sergeis-stores:server:hireEmployee', function(storeId, citizen
   -- Hire employee
   MySQL.insert.await('INSERT INTO sergeis_store_employees (store_id, citizenid, permission) VALUES (?, ?, ?)', { storeId, citizenid, permission })
   TriggerClientEvent('QBCore:Notify', src, 'Employee hired successfully', 'success')
+  -- Refresh client targets/permissions
+  TriggerEvent('sergeis-stores:server:refreshClients')
   
   -- Notify the hired player if online
   local hiredPlayer = QBCore.Functions.GetPlayerByCitizenId(citizenid)
@@ -159,6 +242,8 @@ RegisterNetEvent('sergeis-stores:server:fireEmployee', function(storeId, citizen
   -- Fire employee
   MySQL.query.await('DELETE FROM sergeis_store_employees WHERE store_id = ? AND citizenid = ?', { storeId, citizenid })
   TriggerClientEvent('QBCore:Notify', src, 'Employee fired successfully', 'success')
+  -- Refresh client targets/permissions
+  TriggerEvent('sergeis-stores:server:refreshClients')
   
   -- Notify the fired player if online
   local firedPlayer = QBCore.Functions.GetPlayerByCitizenId(citizenid)
@@ -195,6 +280,8 @@ RegisterNetEvent('sergeis-stores:server:updateEmployeePermission', function(stor
   -- Update permission
   MySQL.query.await('UPDATE sergeis_store_employees SET permission = ? WHERE store_id = ? AND citizenid = ?', { permission, storeId, citizenid })
   TriggerClientEvent('QBCore:Notify', src, 'Employee permission updated', 'success')
+  -- Refresh client targets/permissions
+  TriggerEvent('sergeis-stores:server:refreshClients')
 end)
 
   print('=== Employee callbacks registered successfully ===')

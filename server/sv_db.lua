@@ -11,7 +11,7 @@ local function decodeOr(tableOrJson)
 end
 
 function DB.GetStores()
-  local rows = MySQL.query.await('SELECT id, name, owner_cid, account_balance, points, location_code, capacity FROM sergeis_stores', {})
+  local rows = MySQL.query.await('SELECT id, name, owner_cid, account_balance, points, location_code, capacity, blip_sprite, blip_image_url FROM sergeis_stores', {})
   rows = rows or {}
   for _, row in ipairs(rows) do
     row.points = decodeOr(row.points)
@@ -38,6 +38,28 @@ function DB.SetStoreCapacity(storeId, capacity)
   MySQL.update.await('UPDATE sergeis_stores SET capacity = ? WHERE id = ?', { capacity, storeId })
 end
 
+function DB.DeleteStore(storeId)
+  MySQL.query.await('DELETE FROM sergeis_stores WHERE id = ?', { storeId })
+end
+
+function DB.SetStoreOwner(storeId, citizenId)
+  MySQL.update.await('UPDATE sergeis_stores SET owner_cid = ? WHERE id = ?', { citizenId, storeId })
+end
+
+function DB.UpdateStoreBlip(storeId, sprite, imageUrl)
+  MySQL.update.await('UPDATE sergeis_stores SET blip_sprite = ?, blip_image_url = ? WHERE id = ?', { sprite, imageUrl, storeId })
+end
+function DB.AddPurchasedUpgrade(storeId, tier)
+  MySQL.insert.await('INSERT IGNORE INTO sergeis_store_upgrades (store_id, tier) VALUES (?, ?)', { storeId, tier })
+end
+
+function DB.GetPurchasedUpgrades(storeId)
+  local rows = MySQL.query.await('SELECT tier FROM sergeis_store_upgrades WHERE store_id = ?', { storeId })
+  local set = {}
+  for _, r in ipairs(rows or {}) do set[tonumber(r.tier)] = true end
+  return set
+end
+
 function DB.AddEmployee(storeId, citizenId, permission)
   MySQL.insert.await('INSERT INTO sergeis_store_employees (store_id, citizenid, permission) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE permission = VALUES(permission)', {
     storeId, citizenId, permission
@@ -58,19 +80,63 @@ function DB.GetStock(storeId)
 end
 
 function DB.UpsertStockItem(storeId, item, label, price, stock)
+  -- Get current stock before update
+  local currentStock = MySQL.single.await('SELECT stock FROM sergeis_store_items WHERE store_id = ? AND item = ?', { storeId, item })
+  local oldStock = currentStock and currentStock.stock or 0
+  local newStock = tonumber(stock) or 0
+  
   MySQL.insert.await('INSERT INTO sergeis_store_items (store_id, item, label, price, stock) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE label = VALUES(label), price = VALUES(price), stock = VALUES(stock)', {
     storeId, item, label, price, stock
   })
+  
+  -- Check if stock went to 0 and notify
+  if oldStock > 0 and newStock == 0 then
+    TriggerEvent('sergeis-stores:server:stockEmpty', storeId, item, label)
+  end
 end
 
 function DB.AdjustStock(storeId, item, delta)
+  -- Get current stock before update
+  local currentStock = MySQL.single.await('SELECT stock FROM sergeis_store_items WHERE store_id = ? AND item = ?', { storeId, item })
+  local oldStock = currentStock and currentStock.stock or 0
+  
+  -- Update stock
   MySQL.update.await('UPDATE sergeis_store_items SET stock = GREATEST(0, stock + ?) WHERE store_id = ? AND item = ?', { delta, storeId, item })
+  
+  -- Get new stock after update
+  local newStockResult = MySQL.single.await('SELECT stock, label FROM sergeis_store_items WHERE store_id = ? AND item = ?', { storeId, item })
+  local newStock = newStockResult and newStockResult.stock or 0
+  local itemLabel = newStockResult and newStockResult.label or item
+  
+  -- Check if stock went to 0 and notify
+  if oldStock > 0 and newStock == 0 then
+    TriggerEvent('sergeis-stores:server:stockEmpty', storeId, item, itemLabel)
+  end
 end
 
 function DB.RecordTransaction(storeId, citizenId, amount, payload)
   MySQL.insert.await('INSERT INTO sergeis_store_transactions (store_id, citizenid, amount, payload) VALUES (?, ?, ?, ?)', {
     storeId, citizenId, amount, json.encode(payload or {})
   })
+end
+
+function DB.IncrementEmployeeOrders(storeId, citizenId)
+  MySQL.insert.await('INSERT INTO sergeis_store_employee_stats (store_id, citizenid, orders_completed) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE orders_completed = orders_completed + 1', {
+    storeId, citizenId
+  })
+end
+
+function DB.GetEmployeeStats(storeId)
+  local rows = MySQL.query.await('SELECT citizenid, orders_completed FROM sergeis_store_employee_stats WHERE store_id = ?', { storeId })
+  return rows or {}
+end
+
+function DB.ResetEmployeeStats(storeId)
+  MySQL.query.await('DELETE FROM sergeis_store_employee_stats WHERE store_id = ?', { storeId })
+end
+
+function DB.ResetEmployeeStat(storeId, citizenId)
+  MySQL.query.await('DELETE FROM sergeis_store_employee_stats WHERE store_id = ? AND citizenid = ?', { storeId, citizenId })
 end
 
 function DB.GetVehicles(storeId)

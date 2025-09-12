@@ -23,7 +23,11 @@ local activeOrders = {}
 
 local function getCitizenId(src)
   local Player = QBCore.Functions.GetPlayer(src)
-  return Player and Player.PlayerData and Player.PlayerData.citizenid or nil
+  if not Player or not Player.PlayerData then return nil end
+  local idField = (Config and Config.IdentifierField) or 'citizenid'
+  local id = Player.PlayerData[idField]
+  if not id or id == '' then id = Player.PlayerData.citizenid or Player.PlayerData.stateid end
+  return id
 end
 
 -- Generate unique order ID
@@ -32,13 +36,18 @@ local function generateOrderId()
 end
 
 -- Calculate order cost
-local function calculateOrderCost(orderItems)
+local function calculateOrderCost(storeId, orderItems)
+  local store = StoresCache[storeId]
+  local locCfg = store and store.location_code and Config.Locations[store.location_code]
+  local costs = (locCfg and locCfg.stockCosts) or {}
   local totalCost = 0
   for _, item in ipairs(orderItems) do
-    local itemPrice = Config.StockOrdering.itemPrices[item.item] or Config.StockOrdering.basePricePerUnit
-    totalCost = totalCost + (item.quantity * itemPrice)
+    local qty = math.abs(tonumber(item.quantity) or 0)
+    local price = tonumber(costs[item.item])
+    if not price then return false, ('Missing wholesale price for %s'):format(item.item) end
+    totalCost = totalCost + qty * price
   end
-  return totalCost
+  return true, totalCost
 end
 
 -- Start stock order mission
@@ -117,9 +126,33 @@ RegisterNetEvent('sergeis-stores:server:startStockOrder', function(storeId, vehi
     TriggerClientEvent('QBCore:Notify', src, 'Order exceeds vehicle capacity', 'error')
     return
   end
+
+  -- Validate against store max capacity (current stock + incoming must not exceed max)
+  do
+    local storeRow = StoresCache[storeId]
+    local locCfg = storeRow and storeRow.location_code and Config.Locations[storeRow.location_code]
+    local baseMax = locCfg and tonumber(locCfg.maxCapacity) or 0
+    local upgraded = storeRow and tonumber(storeRow.capacity) or 0
+    local maxCapacity = (baseMax + upgraded) > 0 and (baseMax + upgraded) or nil
+    if maxCapacity then
+      local currentTotal = 0
+      for _, row in ipairs(DB.GetStock(storeId)) do
+        currentTotal = currentTotal + (tonumber(row.stock) or 0)
+      end
+      if currentTotal + totalUnits > maxCapacity then
+        TriggerClientEvent('QBCore:Notify', src, ('Order exceeds store capacity'):format(currentTotal, totalUnits, maxCapacity), 'error')
+        return
+      end
+    end
+  end
   
-  -- Calculate and check cost
-  local orderCost = calculateOrderCost(orderItems)
+  -- Calculate and check cost using per-store wholesale prices
+  local ok, orderCostOrErr = calculateOrderCost(storeId, orderItems)
+  if not ok then
+    TriggerClientEvent('QBCore:Notify', src, orderCostOrErr, 'error')
+    return
+  end
+  local orderCost = orderCostOrErr
   local store = StoresCache[storeId]
   if not store or (store.account_balance or 0) < orderCost then
     TriggerClientEvent('QBCore:Notify', src, 'Insufficient store funds', 'error')
@@ -168,13 +201,29 @@ RegisterNetEvent('sergeis-stores:server:startStockOrder', function(storeId, vehi
     startTime = os.time()
   }
   
-  -- Log transaction
+  -- Log transaction with detailed description and actor name
+  local actorName = cid
+  local Player = QBCore.Functions.GetPlayer(src)
+  if Player and Player.PlayerData and Player.PlayerData.charinfo then
+    local ci = Player.PlayerData.charinfo
+    actorName = ((ci.firstname or '') .. ' ' .. (ci.lastname or '')):gsub('^%s*(.-)%s*$', '%1')
+  end
+  local parts = {}
+  for _, it in ipairs(orderItems or {}) do
+    local q = tonumber(it.quantity) or 0
+    table.insert(parts, ("%dx %s"):format(q, it.item))
+  end
+  local desc = ('Stock order by %s: %s'):format(actorName, table.concat(parts, ', '))
   DB.RecordTransaction(storeId, cid, -orderCost, {
     type = 'stock_order',
     orderId = orderId,
     items = orderItems,
-    description = 'Stock order - ' .. #orderItems .. ' items'
+    actorName = actorName,
+    description = desc
   })
+
+  -- Increment employee orders completed stat
+  DB.IncrementEmployeeOrders(storeId, cid)
   
   -- Give keys on server side (more reliable)
   local keyGiven = false
@@ -295,9 +344,8 @@ RegisterNetEvent('sergeis-stores:server:completeDelivery', function(orderId)
       DB.AdjustStock(order.storeId, item.item, item.quantity)
       print('Added', item.quantity, 'of', item.item, 'to existing stock')
     else
-      -- Item doesn't exist, create new entry
-      local itemPrice = Config.StockOrdering.itemPrices[item.item] or Config.StockOrdering.basePricePerUnit
-      DB.UpsertStockItem(order.storeId, item.item, item.item, itemPrice, item.quantity)
+      -- Item doesn't exist, create new entry with zero price; owner can set later
+      DB.UpsertStockItem(order.storeId, item.item, item.item, 0, item.quantity)
       print('Created new stock entry for', item.item, 'with quantity', item.quantity)
     end
   end

@@ -29,14 +29,15 @@
     `
     
     overlay.appendChild(dialog)
-    document.body.appendChild(overlay)
+    const container = document.querySelector('.ui-container') || document.body
+    container.appendChild(overlay)
     
     // Add event listeners
     const cancelBtn = dialog.querySelector('.confirm-cancel')
     const confirmBtn = dialog.querySelector('.confirm-yes')
     
     const cleanup = () => {
-      document.body.removeChild(overlay)
+      if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay)
     }
     
     cancelBtn.addEventListener('click', () => {
@@ -226,14 +227,10 @@
     overlay.querySelectorAll('.order-item-checkbox').forEach(checkbox => {
       checkbox.addEventListener('change', function() {
         const item = this.getAttribute('data-item')
-        console.log('Checkbox changed for item:', item, 'checked:', this.checked)
-        
         const quantityInput = overlay.querySelector(`.order-item-quantity[data-item="${item}"]`)
-        console.log('Found quantity input:', quantityInput ? 'yes' : 'no')
         
         if (quantityInput && quantityInput.classList.contains('order-item-quantity')) {
           quantityInput.disabled = !this.checked
-          console.log('Set input disabled to:', !this.checked)
           
           if (!this.checked) {
             quantityInput.value = 1
@@ -248,6 +245,9 @@
     overlay.querySelectorAll('.order-item-quantity').forEach(input => {
       input.addEventListener('input', updateOrderSummary)
     })
+    
+    // Initial update of order summary
+    updateOrderSummary()
     
     function updateOrderSummary() {
       const checkedItems = overlay.querySelectorAll('.order-item-checkbox:checked')
@@ -265,26 +265,46 @@
         totalCost += quantity * itemPrice
       })
       
-      totalUnitsSpan.textContent = totalUnits
-      estimatedCostSpan.textContent = '$' + totalCost
+      // Update the summary display elements
+      if (totalUnitsSpan) {
+        totalUnitsSpan.textContent = totalUnits
+      }
+      
+      if (estimatedCostSpan) {
+        estimatedCostSpan.textContent = '$' + totalCost
+      }
+      
+      if (summaryCapacitySpan) {
+        summaryCapacitySpan.textContent = selectedCapacity > 0 ? selectedCapacity : 'Not Selected'
+      }
       
       // Show/hide summary and enable/disable confirm button
-      if (totalUnits > 0 && selectedCapacity > 0) {
-        orderSummary.style.display = 'block'
+      if (totalUnits > 0) {
+        if (orderSummary) {
+          orderSummary.style.display = 'block'
+        }
         
-        // Check if order fits in vehicle
-        if (totalUnits <= selectedCapacity && vehicleSelect.value) {
+        // Check if order fits in vehicle and vehicle is selected
+        if (selectedCapacity > 0 && totalUnits <= selectedCapacity && vehicleSelect.value) {
           confirmBtn.disabled = false
           confirmBtn.textContent = 'Start Delivery Mission'
           confirmBtn.className = 'order-btn order-confirm'
+        } else if (selectedCapacity > 0 && totalUnits > selectedCapacity) {
+          confirmBtn.disabled = true
+          confirmBtn.textContent = 'Exceeds Vehicle Capacity'
+          confirmBtn.className = 'order-btn order-confirm disabled'
         } else {
           confirmBtn.disabled = true
-          confirmBtn.textContent = totalUnits > selectedCapacity ? 'Exceeds Vehicle Capacity' : 'Select Vehicle'
+          confirmBtn.textContent = 'Select Vehicle'
           confirmBtn.className = 'order-btn order-confirm disabled'
         }
       } else {
-        orderSummary.style.display = 'none'
+        if (orderSummary) {
+          orderSummary.style.display = 'none'
+        }
         confirmBtn.disabled = true
+        confirmBtn.textContent = 'Start Delivery Mission'
+        confirmBtn.className = 'order-btn order-confirm disabled'
       }
     }
     
@@ -475,7 +495,7 @@
                   <div class="faq-a">Unowned shops use config-driven prices per location. Owners can override price and stock once purchased.</div>
                 </div>
                 <div class="faq-item">
-                  <div class="faq-q">Why can’t I order stock?</div>
+                  <div class="faq-q">Why can't I order stock?</div>
                   <div class="faq-a">You need a stored fleet vehicle and selected items within its capacity.</div>
                 </div>
                 <div class="faq-item">
@@ -490,8 +510,25 @@
     }
 
     if (currentTab === 'shop') {
-      const items = state.items || []
+      const rawItems = state.items || []
       const cart = state.cart || []
+      const searchTerm = (state.shopSearchTerm || '').toLowerCase()
+      const sortMode = state.shopSort || 'name-asc'
+      
+      // Filter
+      let items = rawItems.filter(i => {
+        if (!searchTerm) return true
+        const label = (i.label || i.item || '').toLowerCase()
+        return label.includes(searchTerm)
+      })
+      // Sort
+      const sorters = {
+        'name-asc': (a, b) => (a.label || a.item || '').localeCompare(b.label || b.item || ''),
+        'name-desc': (a, b) => (b.label || b.item || '').localeCompare(a.label || a.item || ''),
+        'price-asc': (a, b) => (a.price || 0) - (b.price || 0),
+        'price-desc': (a, b) => (b.price || 0) - (a.price || 0),
+      }
+      items.sort(sorters[sortMode] || sorters['name-asc'])
       
       console.log('Items:', items)
       console.log('Cart:', cart)
@@ -500,9 +537,7 @@
       const isShopOnly = state.allowedTabs && state.allowedTabs.length === 1 && state.allowedTabs[0] === 'shop'
       console.log('Is shop only in render:', isShopOnly, 'CurrentTab:', currentTab, 'AllowedTabs:', state.allowedTabs)
       
-      if (isShopOnly) {
-        console.log('Rendering shop-only layout with', items.length, 'items')
-        // Shop-only layout with item cards and side cart
+      // Build item cards
         const itemCards = items.length > 0 ? items.map(i => `
           <div class="item-card">
             <div class="item-header">
@@ -518,6 +553,7 @@
           </div>
         `).join('') : '<div class="no-items">No items available in this store</div>'
         
+      // Build cart
         const cartItems = cart.map(c => `
           <div class="cart-item">
             <div class="cart-item-info">
@@ -535,12 +571,25 @@
         
         const cartTotal = cart.reduce((sum, c) => sum + (c.price * c.qty), 0).toFixed(2)
         
+      // Unified layout with toolbar
         content.innerHTML = `
           <div class="shop-layout">
             <div class="items-section">
               <div class="section-header">
                 <h3><i class="icon fas fa-shopping-basket"></i>Available Items</h3>
               </div>
+            <div class="shop-toolbar">
+              <div class="search-group">
+                <i class="fas fa-search"></i>
+                <input id="shop-search" class="search-input" type="text" placeholder="Search items..." value="${state.shopSearchTerm || ''}" />
+              </div>
+              <select id="shop-sort" class="sort-select">
+                <option value="name-asc" ${sortMode === 'name-asc' ? 'selected' : ''}>Name (A–Z)</option>
+                <option value="name-desc" ${sortMode === 'name-desc' ? 'selected' : ''}>Name (Z–A)</option>
+                <option value="price-asc" ${sortMode === 'price-asc' ? 'selected' : ''}>Price (Low–High)</option>
+                <option value="price-desc" ${sortMode === 'price-desc' ? 'selected' : ''}>Price (High–Low)</option>
+              </select>
+            </div>
               <div class="items-grid">
                 ${itemCards}
               </div>
@@ -554,24 +603,42 @@
               </div>
               <div class="cart-footer">
                 <div class="cart-total">Total: $${cartTotal}</div>
-                <button id="checkout" class="checkout-btn" ${cart.length === 0 ? 'disabled' : ''}>
-                  <i class="fas fa-credit-card"></i> Checkout
+              <div class="checkout-actions">
+                <button id="checkout-cash" class="checkout-btn" ${cart.length === 0 ? 'disabled' : ''}>
+                  <i class="fas fa-money-bill"></i> Cash
                 </button>
+                <button id="checkout-card" class="checkout-btn" ${cart.length === 0 ? 'disabled' : ''}>
+                  <i class="fas fa-credit-card"></i> Card
+                </button>
+              </div>
               </div>
             </div>
           </div>
         `
-      } else {
-        // Regular layout with rows
-      const list = items.map(i => `<div class="row"><div>${i.label}</div><div>$${i.price}</div><div>Stock: ${i.stock}</div><button data-act="add" data-item="${i.item}" data-price="${i.price}">Add</button></div>`).join('')
-        content.innerHTML = `<div class="panel"><div class="card-header"><h3><i class="icon fas fa-shopping-basket"></i>Shop</h3></div>${list}<div class="cart"><button id="checkout">Checkout</button></div></div>`
-      }
-      content.querySelector('#checkout')?.addEventListener('click', () => {
-        const payload = { cart: state.cart || [], payType: 'cash' }
+      const doCheckout = (payType) => {
+        const payload = { cart: state.cart || [], payType }
         if (state.storeId) payload.storeId = state.storeId
         if (state.locationCode) payload.locationCode = state.locationCode
         fetch(`https://${GetParentResourceName()}/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      })
+      }
+      content.querySelector('#checkout-cash')?.addEventListener('click', () => doCheckout('cash'))
+      content.querySelector('#checkout-card')?.addEventListener('click', () => doCheckout('bank'))
+
+      // Search and sort events
+      const searchEl = content.querySelector('#shop-search')
+      if (searchEl) {
+        searchEl.addEventListener('input', (e) => {
+          state.shopSearchTerm = e.target.value || ''
+          render()
+        })
+      }
+      const sortEl = content.querySelector('#shop-sort')
+      if (sortEl) {
+        sortEl.addEventListener('change', (e) => {
+          state.shopSort = e.target.value
+          render()
+        })
+      }
       content.querySelectorAll('button[data-act="add"]').forEach(btn => {
         btn.addEventListener('click', () => {
           const item = btn.getAttribute('data-item')
@@ -639,9 +706,46 @@
     if (currentTab === 'purchase') {
       const code = state.locationCode
       const label = code || 'Store'
-      content.innerHTML = `<div class="panel"><div class="card-header"><h3><i class="icon fas fa-credit-card"></i>Purchase Store</h3></div><div>Location: ${label}</div><button id="purchase">Purchase</button></div>`
-      document.getElementById('purchase').addEventListener('click', () => {
-        fetch(`https://${GetParentResourceName()}/purchase`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locationCode: state.locationCode }) })
+      // Fetch full location info (label + price) and render a full-page card
+      fetch(`https://${GetParentResourceName()}/getLocationInfo`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locationCode: state.locationCode })
+      }).then(r => r.json()).then(info => {
+        const name = (info && info.label) || label
+        const price = (info && typeof info.price === 'number') ? info.price : 0
+        const titleEl = document.querySelector('.company-name')
+        if (titleEl) titleEl.textContent = name
+        content.innerHTML = `
+          <div class="purchase-hero">
+            <div class="purchase-header">
+              <div class="purchase-title">
+                <i class="fas fa-store"></i>
+                <h2>${name}</h2>
+              </div>
+              <div class="purchase-price">
+                <span class="price-label">Price</span>
+                <span class="price-value">$${price.toLocaleString()}</span>
+              </div>
+            </div>
+            <div class="purchase-body">
+              <div class="purchase-feature-grid">
+                <div class="feature-item"><i class="fas fa-box"></i><span>Manage stock & prices</span></div>
+                <div class="feature-item"><i class="fas fa-users"></i><span>Hire employees</span></div>
+                <div class="feature-item"><i class="fas fa-university"></i><span>Store banking</span></div>
+                <div class="feature-item"><i class="fas fa-truck"></i><span>Fleet & deliveries</span></div>
+              </div>
+              <button id="purchase" class="purchase-btn"><i class="fas fa-credit-card"></i> Buy Store</button>
+            </div>
+          </div>
+        `
+        document.getElementById('purchase').addEventListener('click', () => {
+          fetch(`https://${GetParentResourceName()}/purchase`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locationCode: state.locationCode }) })
+        })
+      }).catch(() => {
+        content.innerHTML = `<div class="panel"><div class="card-header"><h3><i class="icon fas fa-credit-card"></i>Purchase Store</h3></div><div>Location: ${label}</div><button id="purchase">Purchase</button></div>`
+        document.getElementById('purchase')?.addEventListener('click', () => {
+          fetch(`https://${GetParentResourceName()}/purchase`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locationCode: state.locationCode }) })
+        })
       })
     }
     if (currentTab === 'stock') {
@@ -689,10 +793,6 @@
                   <label>Price:</label>
                   <input type="number" class="edit-price" value="${item.price}" placeholder="0.00" step="0.01" min="0">
                 </div>
-                <div class="stock-field">
-                  <label>Stock:</label>
-                  <input type="number" class="edit-stock" value="${item.stock}" placeholder="0" min="0">
-                </div>
               </div>
             </div>
           `
@@ -709,9 +809,6 @@
                   <button class="edit-btn" data-item="${item.item}">
                     <i class="fas fa-edit"></i> Edit
                   </button>
-                  ${item.isNew ? '' : `<button class="delete-btn" data-item="${item.item}">
-                    <i class="fas fa-trash"></i>
-                  </button>`}
                 </div>
               </div>
               <div class="stock-item-details">
@@ -758,6 +855,9 @@
         <div class="panel">
           <div class="card-header">
             <h3><i class="icon fas fa-briefcase"></i>Store Management</h3>
+            <button class="add-employee-btn" id="renameStoreBtn">
+              <i class="fas fa-pen"></i> Rename Store
+            </button>
           </div>
           <div class="manage-content">
             <div class="manage-card">
@@ -800,11 +900,149 @@
                     <div class="stat-label">Vehicles</div>
                   </div>
                 </div>
+                <div class="manage-actions">
+                  <div class="action-card">
+                    <div class="action-header">
+                      <i class="fas fa-dollar-sign"></i>
+                      <h4>Sell Store</h4>
+              </div>
+                    <div class="action-body">
+                      <p>Return this store to unowned status for a 75% refund.</p>
+                      <button class="sell-store-btn" id="sellStoreBtn">
+                        <i class="fas fa-dollar-sign"></i> Sell Store
+                      </button>
+                    </div>
+                  </div>
+                  <div class="action-card">
+                    <div class="action-header">
+                      <i class="fas fa-share"></i>
+                      <h4>Transfer Store</h4>
+                    </div>
+                    <div class="action-body">
+                      <div class="transfer-row">
+                        <select id="transferPlayersSelect">
+                          <option value="">Select player to transfer...</option>
+                        </select>
+                        <button class="refresh-nearby-btn small" id="refreshTransferNearby" title="Refresh">
+                          <i class="fas fa-sync"></i>
+                        </button>
+                        <button class="add-employee-btn" id="transferStoreBtn">
+                          <i class="fas fa-share"></i> Transfer Store
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       `
+
+      // Rename store button handler
+      document.getElementById('renameStoreBtn')?.addEventListener('click', () => {
+        // Fetch current name for placeholder
+        fetch(`https://${GetParentResourceName()}/getStoreInfo`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storeId: state.storeId })
+        }).then(r => r.json()).then(info => {
+          const currentName = (info && info.name) || 'Store'
+          // Build themed prompt inside iPad
+          const overlay = document.createElement('div')
+          overlay.className = 'confirm-overlay'
+          const dialog = document.createElement('div')
+          dialog.className = 'confirm-dialog'
+          dialog.innerHTML = `
+            <div class="confirm-header"><h3>Rename Store</h3></div>
+            <div class="confirm-body">
+              <p>Enter a new store name and choose a map icon:</p>
+              <input id="newStoreNameInput" type="text" value="${currentName}" style="width:100%;margin-top:10px;background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; color: var(--text-primary);">
+              <div style="margin-top:12px;">
+                <label style="display:block;margin-bottom:6px;color:rgba(255,255,255,.85);font-size:.9rem;">Blip Sprite (ID)</label>
+                <input id="newBlipSpriteInput" type="number" placeholder="e.g. 52" min="1" style="width:100%;background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; color: var(--text-primary);">
+              </div>
+            </div>
+            <div class="confirm-actions">
+              <button class="confirm-btn confirm-cancel">Cancel</button>
+              <button class="confirm-btn confirm-yes">Save</button>
+            </div>
+          `
+          overlay.appendChild(dialog)
+          const container = document.querySelector('.ui-container') || document.body
+          container.appendChild(overlay)
+
+          const cleanup = () => { if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay) }
+          dialog.querySelector('.confirm-cancel').addEventListener('click', cleanup)
+          overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup() })
+          dialog.querySelector('.confirm-yes').addEventListener('click', () => {
+            const newName = dialog.querySelector('#newStoreNameInput').value.trim()
+            if (!newName) return
+            fetch(`https://${GetParentResourceName()}/updateStoreName`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ storeId: state.storeId, newName })
+            }).then(() => {
+              // Update top-left title immediately
+              const title = document.querySelector('.company-name')
+              if (title) title.textContent = newName
+              // Save blip sprite (optional)
+              const spriteVal = dialog.querySelector('#newBlipSpriteInput').value
+              if (spriteVal && spriteVal !== '') {
+                const payload = { storeId: state.storeId, spriteId: parseInt(spriteVal) }
+                fetch(`https://${GetParentResourceName()}/updateStoreBlip`, {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+                }).finally(() => cleanup())
+              } else { cleanup() }
+            })
+          })
+        })
+      })
+
+      // Sell store
+      document.getElementById('sellStoreBtn')?.addEventListener('click', () => {
+        showConfirmDialog('Sell Store', 'Are you sure you want to sell this store? You will receive 75% of the purchase price. This cannot be undone.', () => {
+          fetch(`https://${GetParentResourceName()}/sellStore`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storeId: state.storeId })
+          })
+        })
+      })
+
+      // Transfer store helpers
+      const refreshTransfer = () => {
+        const sel = document.getElementById('transferPlayersSelect')
+        if (!sel) return
+        sel.innerHTML = '<option value="">Scanning...</option>'
+        fetch(`https://${GetParentResourceName()}/getNearbyPlayers`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ radius: 8.0 })
+        }).then(r => r.json()).then(data => {
+          const players = (data && data.players) || []
+          if (players.length === 0) {
+            sel.innerHTML = '<option value="">No players nearby</option>'
+            return
+          }
+          const opts = ['<option value="">Select player to transfer...</option>'].concat(players.map(p => {
+            const name = (p.name && p.name.trim().length > 0) ? p.name : (p.citizenid || ('ID ' + p.serverId))
+            return `<option value="${p.citizenid}">${name}</option>`
+          }))
+          sel.innerHTML = opts.join('')
+        }).catch(() => {
+          sel.innerHTML = '<option value="">Failed to load players</option>'
+        })
+      }
+      document.getElementById('refreshTransferNearby')?.addEventListener('click', (e) => { e.preventDefault(); refreshTransfer() })
+      refreshTransfer()
+      document.getElementById('transferStoreBtn')?.addEventListener('click', () => {
+        const sel = document.getElementById('transferPlayersSelect')
+        const cid = sel && sel.value
+        if (!cid) return
+        showConfirmDialog('Transfer Store', 'Transfer ownership to the selected player?', () => {
+          fetch(`https://${GetParentResourceName()}/transferStore`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storeId: state.storeId, citizenid: cid })
+          })
+        })
+      })
     }
     if (currentTab === 'employees') {
       // Employees content is handled by renderEmployees() function
@@ -825,7 +1063,8 @@
     const orderStockBtn = document.getElementById('orderStockBtn')
     if (orderStockBtn) {
       orderStockBtn.addEventListener('click', () => {
-        showOrderStockDialog()
+        currentTab = 'orderStock'
+        renderOrderStock()
       })
     }
     
@@ -838,7 +1077,7 @@
       })
     })
     
-    // Save button - save changes
+    // Save button - save changes (price/label only, keep stock unchanged)
     content.querySelectorAll('.save-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const item = btn.getAttribute('data-item')
@@ -846,7 +1085,9 @@
         
         const label = itemContainer.querySelector('.edit-label').value
         const price = Number(itemContainer.querySelector('.edit-price').value || 0)
-        const stock = Number(itemContainer.querySelector('.edit-stock').value || 0)
+        // Keep existing stock value to avoid changing quantities from UI
+        const existing = (state.items || []).find(i => i.item === item)
+        const stock = existing ? Number(existing.stock || 0) : 0
         
         if (!label.trim()) {
           console.warn('Item label cannot be empty')
@@ -886,40 +1127,14 @@
       })
     })
     
-    // Delete button - remove item (set stock to 0)
-    content.querySelectorAll('.delete-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const item = btn.getAttribute('data-item')
-        
-        // Send delete to server (set stock to 0)
-        const body = {
-          storeId: state.storeId,
-          item: item,
-          label: '',
-          price: 0,
-          stock: 0
-        }
-        
-        fetch(`https://${GetParentResourceName()}/upsertStockAllowed`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        })
-        .then(() => {
-          refreshStockData()
-        })
-        .catch(error => {
-          console.error('Error deleting stock:', error)
-        })
-      })
-    })
+    // Delete button removed: items are no longer deleted from this UI
   }
   
   function refreshStockData() {
     if (state.storeId && currentTab === 'stock') {
       fetch(`https://${GetParentResourceName()}/getStock`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId: state.storeId })
       })
       .then(response => response.json())
@@ -927,10 +1142,343 @@
         state.items = data.items || []
         state.allowedItems = data.allowedItems || []
         render()
-      })
-      .catch(error => {
+        })
+        .catch(error => {
         console.error('Error refreshing stock data:', error)
         render()
+      })
+    }
+  }
+
+  function refreshManageStats() {
+    if (!state.storeId) return
+    const resource = GetParentResourceName()
+    Promise.all([
+      fetch(`https://${resource}/getStock`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: state.storeId }) }).then(r => r.json()).catch(() => ({})),
+      fetch(`https://${resource}/getEmployees`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: state.storeId }) }).then(r => r.json()).catch(() => ({})),
+      fetch(`https://${resource}/getFleetVehicles`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: state.storeId }) }).then(r => r.json()).catch(() => ({}))
+    ]).then(([stock, employees, fleet]) => {
+      state.items = stock.items || state.items || []
+      state.allowedItems = stock.allowedItems || state.allowedItems || []
+      state.employees = employees.employees || state.employees || []
+      state.vehicles = fleet.vehicles || state.vehicles || []
+      if (currentTab === 'manage') render()
+    })
+  }
+
+  function renderOrderStock() {
+    const allowedItems = state.allowedItems || []
+    content.innerHTML = `
+      <div class="panel">
+        <div class="card-header">
+          <h3><i class="icon fas fa-truck-loading"></i>Order Stock</h3>
+          <div class="header-actions">
+            <button class="order-back-btn" id="backToStock">
+              <i class="fas fa-arrow-left"></i> Back to Stock
+            </button>
+          </div>
+        </div>
+        <div class="loading">Loading vehicles...</div>
+      </div>
+    `
+
+    const resourceName = GetParentResourceName()
+    fetch(`https://${resourceName}/getFleetVehicles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: state.storeId })
+      })
+    .then(r => r.json())
+      .then(data => {
+      const vehicles = (data.vehicles || []).filter(v => v.stored)
+
+      // Back handler
+      const attachBack = () => {
+        const backBtn = document.getElementById('backToStock')
+        if (backBtn) backBtn.addEventListener('click', () => {
+          currentTab = 'stock'
+          // Re-fetch stock so we have latest allowedItems/items
+          if (state.storeId) {
+            fetch(`https://${GetParentResourceName()}/getStock`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ storeId: state.storeId })
+            }).then(resp => resp.json()).then(s => {
+              state.items = s.items || []
+              state.allowedItems = s.allowedItems || []
+        render()
+            }).catch(() => render())
+          } else {
+            render()
+          }
+        })
+      }
+
+      if (vehicles.length === 0) {
+        content.innerHTML = `
+          <div class="panel">
+            <div class="card-header">
+              <h3><i class="icon fas fa-truck-loading"></i>Order Stock</h3>
+              <div class="header-actions">
+                <button class="order-back-btn" id="backToStock">
+                  <i class="fas fa-arrow-left"></i> Back to Stock
+                </button>
+              </div>
+            </div>
+            <div class="order-empty">
+              <div class="empty-title">No Vehicles Available</div>
+              <div class="empty-subtitle">Purchase and store a vehicle in your fleet to order stock.</div>
+            </div>
+          </div>
+        `
+        attachBack()
+        return
+      }
+
+      const vehicleOptions = vehicles.map(vehicle => {
+        const cfg = getVehicleConfig(vehicle.model)
+        const cap = cfg ? cfg.capacity : 100
+        return `<option value="${vehicle.id}" data-capacity="${cap}">${vehicle.model} (${vehicle.plate}) - Capacity: ${cap}</option>`
+      }).join('')
+
+      // Fetch per-store wholesale prices before rendering
+      fetch(`https://${GetParentResourceName()}/getStockOrderPrices`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: state.storeId })
+      }).then(r => r.json()).then(priceData => {
+        state.orderPrices = (priceData && priceData.override) || {}
+        const itemInputs = allowedItems.map(item => {
+          const unit = state.orderPrices[item] != null ? Number(state.orderPrices[item]) : 0
+          return `
+            <div class="order-item">
+              <div class="order-item-header">
+                <label class="order-item-label">
+                  <input type="checkbox" class="order-item-checkbox" data-item="${item}">
+                  <span>${item}</span>
+                </label>
+                <span class="unit-price">$${unit}</span>
+              </div>
+              <div class="order-item-controls">
+                <label>Quantity:</label>
+                <input type="number" class="order-item-quantity" data-item="${item}" min="1" max="100" value="1" disabled>
+              </div>
+            </div>
+          `
+        }).join('')
+
+        content.innerHTML = `
+        <div class="panel">
+          <div class="card-header">
+            <h3><i class="icon fas fa-truck-loading"></i>Order Stock</h3>
+            <div class="header-actions">
+              <button class="order-back-btn" id="backToStock">
+                <i class="fas fa-arrow-left"></i> Back to Stock
+              </button>
+            </div>
+          </div>
+          <div class="order-body">
+            <div class="order-section">
+              <h4><i class="icon fas fa-car"></i>Select Vehicle</h4>
+              <select id="orderVehicleSelect" class="order-vehicle-select">
+                <option value="">Choose a vehicle...</option>
+                ${vehicleOptions}
+              </select>
+              <div class="capacity-info" id="capacityInfo" style="display: none;">
+                <span class="capacity-text">Capacity: <span id="vehicleCapacity">0</span> units</span>
+              </div>
+            </div>
+
+            <div class="order-section">
+              <h4><i class="icon fas fa-boxes"></i>Select Items to Order</h4>
+              <div class="order-items-container">
+                ${itemInputs || '<div class="no-items">No allowed items configured for this store</div>'}
+              </div>
+            </div>
+
+            <div class="order-section">
+              <h4><i class="icon fas fa-receipt"></i>Order Summary</h4>
+              <div class="order-summary" id="orderSummary" style="display: none;">
+                <div class="summary-row">
+                  <span>Total Units:</span>
+                  <span id="totalUnits">0</span>
+                </div>
+                <div class="summary-row">
+                  <span>Vehicle Capacity:</span>
+                  <span id="summaryCapacity">0</span>
+                </div>
+                <div class="summary-row">
+                  <span>Estimated Cost:</span>
+                  <span id="estimatedCost">$0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="order-actions">
+            <button class="order-btn order-cancel" id="backToStock2"><i class="fas fa-times"></i> Cancel</button>
+            <button class="order-btn order-confirm" id="confirmOrderBtn" disabled><i class="fas fa-play"></i> Start Delivery Mission</button>
+          </div>
+        </div>
+      `
+
+        attachBack()
+        const back2 = document.getElementById('backToStock2')
+        if (back2) back2.addEventListener('click', () => document.getElementById('backToStock')?.click())
+
+        addOrderPageListeners(vehicles)
+      })
+    })
+    .catch(err => {
+      console.error('Error fetching vehicles for order:', err)
+      content.innerHTML = `
+        <div class="panel">
+          <div class="card-header">
+            <h3><i class="icon fas fa-truck-loading"></i>Order Stock</h3>
+            <div class="header-actions">
+              <button class="order-back-btn" id="backToStock">
+                <i class="fas fa-arrow-left"></i> Back to Stock
+              </button>
+            </div>
+          </div>
+          <div class="error-message">Failed to load vehicles. Please try again.</div>
+        </div>
+      `
+      const backBtn = document.getElementById('backToStock')
+      if (backBtn) backBtn.addEventListener('click', () => { currentTab = 'stock'; render() })
+    })
+  }
+
+  function addOrderPageListeners(vehicles) {
+    const vehicleSelect = content.querySelector('#orderVehicleSelect')
+    const capacityInfo = content.querySelector('#capacityInfo')
+    const vehicleCapacitySpan = content.querySelector('#vehicleCapacity')
+    const orderSummary = content.querySelector('#orderSummary')
+    const totalUnitsSpan = content.querySelector('#totalUnits')
+    const summaryCapacitySpan = content.querySelector('#summaryCapacity')
+    const estimatedCostSpan = content.querySelector('#estimatedCost')
+    const confirmBtn = content.querySelector('#confirmOrderBtn')
+
+    let selectedCapacity = 0
+
+    if (vehicleSelect) {
+      vehicleSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex]
+        if (selectedOption && selectedOption.value) {
+          selectedCapacity = parseInt(selectedOption.getAttribute('data-capacity')) || 100
+          if (vehicleCapacitySpan) vehicleCapacitySpan.textContent = selectedCapacity
+          if (capacityInfo) capacityInfo.style.display = 'block'
+          if (summaryCapacitySpan) summaryCapacitySpan.textContent = selectedCapacity
+        } else {
+          selectedCapacity = 0
+          if (capacityInfo) capacityInfo.style.display = 'none'
+        }
+        updateOrderSummary()
+      })
+    }
+
+    content.querySelectorAll('.order-item-checkbox').forEach(checkbox => {
+      checkbox.addEventListener('change', function() {
+        const item = this.getAttribute('data-item')
+        const quantityInput = content.querySelector(`.order-item-quantity[data-item="${item}"]`)
+        if (quantityInput && quantityInput.classList.contains('order-item-quantity')) {
+          quantityInput.disabled = !this.checked
+          if (!this.checked) {
+            quantityInput.value = 1
+          } else if (quantityInput.value == 0 || quantityInput.value == '') {
+            quantityInput.value = 1
+          }
+        }
+        updateOrderSummary()
+      })
+    })
+
+    content.querySelectorAll('.order-item-quantity').forEach(input => {
+      input.addEventListener('input', updateOrderSummary)
+    })
+
+    updateOrderSummary()
+
+    function updateOrderSummary() {
+      const checkedItems = content.querySelectorAll('.order-item-checkbox:checked')
+      let totalUnits = 0
+      let totalCost = 0
+
+      checkedItems.forEach(checkbox => {
+        const item = checkbox.getAttribute('data-item')
+        const quantityInput = content.querySelector(`.order-item-quantity[data-item="${item}"]`)
+        const quantity = parseInt(quantityInput.value) || 0
+        totalUnits += quantity
+        const itemPrice = getItemPrice(item)
+        totalCost += quantity * itemPrice
+      })
+
+      if (totalUnitsSpan) totalUnitsSpan.textContent = totalUnits
+      if (estimatedCostSpan) estimatedCostSpan.textContent = '$' + totalCost
+      if (summaryCapacitySpan) summaryCapacitySpan.textContent = selectedCapacity > 0 ? selectedCapacity : 'Not Selected'
+
+      if (totalUnits > 0) {
+        if (orderSummary) orderSummary.style.display = 'block'
+        if (selectedCapacity > 0 && totalUnits <= selectedCapacity && vehicleSelect && vehicleSelect.value) {
+          if (confirmBtn) {
+            confirmBtn.disabled = false
+            confirmBtn.textContent = 'Start Delivery Mission'
+            confirmBtn.className = 'order-btn order-confirm'
+          }
+        } else if (selectedCapacity > 0 && totalUnits > selectedCapacity) {
+          if (confirmBtn) {
+            confirmBtn.disabled = true
+            confirmBtn.textContent = 'Exceeds Vehicle Capacity'
+            confirmBtn.className = 'order-btn order-confirm disabled'
+          }
+        } else {
+          if (confirmBtn) {
+            confirmBtn.disabled = true
+            confirmBtn.textContent = 'Select Vehicle'
+            confirmBtn.className = 'order-btn order-confirm disabled'
+          }
+        }
+      } else {
+        if (orderSummary) orderSummary.style.display = 'none'
+        if (confirmBtn) {
+          confirmBtn.disabled = true
+          confirmBtn.textContent = 'Start Delivery Mission'
+          confirmBtn.className = 'order-btn order-confirm disabled'
+        }
+      }
+    }
+
+    function getItemPrice(item) {
+      const prices = state.orderPrices || {}
+      const val = prices[item]
+      return (typeof val === 'number') ? val : Number(val) || 0
+    }
+
+    // Load per-store wholesale prices and refresh summary
+    fetch(`https://${GetParentResourceName()}/getStockOrderPrices`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeId: state.storeId })
+    }).then(r => r.json()).then(data => {
+      state.orderPrices = (data && data.override) || {}
+      // Recompute once prices are loaded
+      try { updateOrderSummary() } catch (e) {}
+    }).catch(() => {})
+
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', () => {
+        if (confirmBtn.disabled) return
+        const selectedVehicleId = vehicleSelect ? vehicleSelect.value : null
+        const checkedItems = content.querySelectorAll('.order-item-checkbox:checked')
+        const orderItems = []
+        checkedItems.forEach(checkbox => {
+          const item = checkbox.getAttribute('data-item')
+          const quantityInput = content.querySelector(`.order-item-quantity[data-item="${item}"]`)
+          const quantity = parseInt(quantityInput.value) || 0
+          if (quantity > 0) orderItems.push({ item, quantity })
+        })
+        if (orderItems.length > 0 && selectedVehicleId) {
+          startDeliveryMission(parseInt(selectedVehicleId), orderItems)
+          // Return to stock after starting
+          currentTab = 'stock'
+        render()
+        }
       })
     }
   }
@@ -995,6 +1543,13 @@
                   <option value="3" ${emp.permission === 3 ? 'selected' : ''}>Owner</option>
                 </select>
               </div>
+              <div class="employee-stats">
+                <span class="permission-label">Orders Completed:</span>
+                <span class="stat-value">${emp.orders_completed || 0}</span>
+                <button class="refresh-nearby-btn small" data-act="reset-stat" data-citizenid="${emp.citizenid}" title="Reset this employee's count">
+                  <i class="fas fa-undo"></i>
+                </button>
+              </div>
               <div class="employee-actions">
                 ${emp.permission !== 3 ? `<button class="fire-btn" data-citizenid="${emp.citizenid}">
                   <i class="fas fa-user-times"></i> Fire
@@ -1009,9 +1564,11 @@
         <div class="panel">
           <div class="card-header">
             <h3><i class="icon fas fa-users"></i>Employee Management</h3>
+            <div class="header-actions">
             <button class="add-employee-btn" id="addEmployeeBtn">
               <i class="fas fa-user-plus"></i> Hire Employee
             </button>
+            </div>
           </div>
           <div class="employees-container">
             ${employeeList || '<div class="no-employees">No employees hired yet</div>'}
@@ -1025,8 +1582,15 @@
             </div>
             <div class="hire-form-body">
               <div class="form-field">
-                <label>Citizen ID:</label>
-                <input type="text" id="newEmployeeCitizenId" placeholder="Enter Citizen ID">
+                <label>Nearby Player:</label>
+                <div class="nearby-row">
+                  <select id="nearbyPlayersSelect">
+                    <option value="">Select a player...</option>
+                  </select>
+                  <button class="refresh-nearby-btn small" id="refreshNearbyInForm" title="Refresh">
+                    <i class="fas fa-sync"></i>
+                  </button>
+                </div>
               </div>
               <div class="form-field">
                 <label>Role:</label>
@@ -1046,6 +1610,27 @@
       `
       
       addEmployeeEventListeners()
+      document.getElementById('resetStatsBtn')?.addEventListener('click', () => {
+        showConfirmDialog('Reset Employee Stats', 'Reset all employee order counts to 0?', () => {
+          fetch(`https://${GetParentResourceName()}/resetEmployeeStats`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storeId: state.storeId })
+          }).then(() => renderEmployees())
+        })
+      })
+      // Per-employee reset
+      content.querySelectorAll('[data-act="reset-stat"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const cid = btn.getAttribute('data-citizenid')
+          if (!cid) return
+          showConfirmDialog('Reset Employee Stat', 'Reset this employee\'s order count?', () => {
+            fetch(`https://${GetParentResourceName()}/resetEmployeeStat`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ storeId: state.storeId, citizenid: cid })
+            }).then(() => renderEmployees())
+          })
+        })
+      })
     })
     .catch(error => {
       console.error('Error fetching employees:', error)
@@ -1113,15 +1698,6 @@
               </div>
             </div>
             <div class="vehicle-actions">
-              ${vehicle.stored ? `
-                <button class="spawn-btn" data-vehicle-id="${vehicle.id}">
-                  <i class="fas fa-play"></i> Spawn
-                </button>
-              ` : `
-                <button class="spawn-btn disabled" disabled>
-                  <i class="fas fa-road"></i> In Use
-                </button>
-              `}
               ${vehicle.stored ? `
                 <button class="sell-btn" data-vehicle-id="${vehicle.id}">
                   <i class="fas fa-dollar-sign"></i> Sell
@@ -1210,25 +1786,6 @@
   }
 
   function addFleetEventListeners() {
-    // Spawn vehicle
-    content.querySelectorAll('.spawn-btn:not(.disabled)').forEach(btn => {
-      btn.addEventListener('click', function() {
-        const vehicleId = this.getAttribute('data-vehicle-id')
-        if (vehicleId) {
-          const resourceName = GetParentResourceName()
-          fetch(`https://${resourceName}/spawnVehicle`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vehicleId: parseInt(vehicleId) })
-          })
-          .then(() => {
-            // Refresh fleet display
-            setTimeout(() => renderFleet(), 500)
-          })
-        }
-      })
-    })
-    
     // Sell vehicle
     content.querySelectorAll('.sell-btn').forEach(btn => {
       btn.addEventListener('click', function() {
@@ -1324,7 +1881,12 @@
       const transactionList = transactions.map(tx => {
         const payload = typeof tx.payload === 'string' ? JSON.parse(tx.payload) : tx.payload
         const type = payload?.type || 'unknown'
-        const description = payload?.description || 'Transaction'
+        let description = payload?.description || 'Transaction'
+        if (type === 'stock_order' && Array.isArray(payload?.items)) {
+          const actor = payload?.actorName || ''
+          const parts = payload.items.map(it => `${it.quantity}x ${it.item}`).join(', ')
+          description = actor ? `Stock order by ${actor}: ${parts}` : `Stock order: ${parts}`
+        }
         const amount = tx.amount
         const date = new Date(tx.created_at).toLocaleDateString()
         const isPositive = amount > 0
@@ -1430,28 +1992,64 @@
 
   function renderUpgrades() {
     console.log('renderUpgrades() called, storeId:', state.storeId)
+    content.innerHTML = `
+      <div class="panel">
+        <div class="card-header">
+          <h3><i class="icon fas fa-arrow-up"></i>Upgrades</h3>
+        </div>
+        <div class="loading">Loading upgrades...</div>
+      </div>
+    `
+
+    const ensureCapacity = () => new Promise((resolve) => {
+      if (!state.storeId) return resolve()
+      fetch(`https://${GetParentResourceName()}/getStock`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: state.storeId })
+      }).then(r => r.json()).then(data => {
+        state.items = data.items || []
+        state.allowedItems = data.allowedItems || []
+        state.usedCapacity = data.usedCapacity
+        state.maxCapacity = data.maxCapacity
+        resolve()
+      }).catch(() => resolve())
+    })
+
+    ensureCapacity().then(() => {
     const used = state.usedCapacity || 0
     const max = state.maxCapacity || 0
 
-    fetch(`https://${GetParentResourceName()}/getCapacityUpgrades`, {
+      fetch(`https://${GetParentResourceName()}/getPurchasedUpgrades`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId: state.storeId })
+      })
+      .then(r => r.json())
+      .then(p => {
+        state.purchasedUpgrades = p.purchased || {}
+        return fetch(`https://${GetParentResourceName()}/getCapacityUpgrades`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{}'
+        })
     })
     .then(r => r.json())
     .then(data => {
       const upgrades = data.upgrades || []
+        const purchased = state.purchasedUpgrades || {}
       const tiers = upgrades.map((u, idx) => {
+          const tierIndex = idx + 1
+          const isPurchased = !!(purchased[tierIndex] || purchased[String(tierIndex)])
+          const btn = isPurchased ? `<button class=\"upgrade-btn disabled\" disabled><i class=\"fas fa-check\"></i> Purchased</button>` : `<button class=\"upgrade-btn\" data-tier=\"${tierIndex}\"><i class=\"fas fa-arrow-up\"></i> Purchase</button>`
         return `
-          <div class=\"upgrade-item\">\n            <div class=\"upgrade-info\">\n              <h4>+${u.increase} Capacity</h4>\n              <div class=\"upgrade-meta\">\n                <span class=\"meta-chip\"><i class=\"fas fa-box\"></i> Capacity</span>\n                <span class=\"meta-chip price\"><i class=\"fas fa-dollar-sign\"></i> $${(u.price||0).toLocaleString()}</span>\n              </div>\n            </div>\n            <div class=\"upgrade-actions\">\n              <button class=\"upgrade-btn\" data-tier=\"${idx + 1}\">\n                <i class=\"fas fa-arrow-up\"></i> Purchase\n              </button>\n            </div>\n          </div>
+            <div class=\"upgrade-item\">\n              <div class=\"upgrade-info\">\n                <h4>+${u.increase} Capacity</h4>\n                <div class=\"upgrade-meta\">\n                  <span class=\"meta-chip\"><i class=\"fas fa-box\"></i> Capacity</span>\n                  <span class=\"meta-chip price\"><i class=\"fas fa-dollar-sign\"></i> $${(u.price||0).toLocaleString()}</span>\n                </div>\n              </div>\n              <div class=\"upgrade-actions\">\n                ${btn}\n              </div>\n            </div>
         `
       }).join('')
 
       content.innerHTML = `
-        <div class=\"panel\">\n          <div class=\"card-header\">\n            <h3><i class=\"icon fas fa-arrow-up\"></i>Upgrades</h3>\n          </div>\n          <div class=\"upgrades-summary\">\n            <div class=\"summary-card\">\n              <div class=\"summary-title\">Current Capacity</div>\n              <div class=\"summary-value\">${used} / ${max}</div>\n            </div>\n          </div>\n          <div class=\"upgrades-list\">\n            ${tiers}\n          </div>\n        </div>
+          <div class=\"panel\">\n            <div class=\"card-header\">\n              <h3><i class=\"icon fas fa-arrow-up\"></i>Upgrades</h3>\n            </div>\n            <div class=\"upgrades-summary\">\n              <div class=\"summary-card\">\n                <div class=\"summary-title\">Current Capacity</div>\n                <div class=\"summary-value\">${used} / ${max}</div>\n              </div>\n            </div>\n            <div class=\"upgrades-list\">\n              ${tiers}\n            </div>\n          </div>
       `
 
-      content.querySelectorAll('.upgrade-btn').forEach(btn => {
+        content.querySelectorAll('.upgrade-btn:not(.disabled)').forEach(btn => {
         btn.addEventListener('click', () => {
           const tier = parseInt(btn.getAttribute('data-tier'))
           showConfirmDialog('Purchase Upgrade', 'Confirm purchasing this capacity upgrade?', () => {
@@ -1460,15 +2058,25 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ storeId: state.storeId, tier })
             }).then(() => {
-              fetch(`https://${GetParentResourceName()}/getStock`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ storeId: state.storeId })
-              }).then(r => r.json()).then(data => {
-                state.items = data.items || []
-                state.allowedItems = data.allowedItems || []
-                state.usedCapacity = data.usedCapacity
-                state.maxCapacity = data.maxCapacity
+                // Optimistically mark this tier as purchased in UI/state
+                state.purchasedUpgrades = state.purchasedUpgrades || {}
+                state.purchasedUpgrades[tier] = true
+                if (btn) {
+                  btn.disabled = true
+                  btn.classList.add('disabled')
+                  btn.innerHTML = '<i class="fas fa-check"></i> Purchased'
+                }
+                Promise.all([
+                  fetch(`https://${GetParentResourceName()}/getStock`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: state.storeId }) }).then(r => r.json()),
+                  fetch(`https://${GetParentResourceName()}/getPurchasedUpgrades`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId: state.storeId }) }).then(r => r.json())
+                ]).then(([stock, purchasedRes]) => {
+                  state.items = stock.items || []
+                  state.allowedItems = stock.allowedItems || []
+                  state.usedCapacity = stock.usedCapacity
+                  state.maxCapacity = stock.maxCapacity
+                  state.purchasedUpgrades = purchasedRes.purchased || {}
                 renderUpgrades()
+                })
               })
             })
           })
@@ -1483,6 +2091,8 @@
     if (addEmployeeBtn) {
       addEmployeeBtn.addEventListener('click', () => {
         document.getElementById('hireForm').classList.remove('hidden')
+        // Load nearby players immediately
+        refreshNearbyPlayers()
       })
     }
     
@@ -1498,11 +2108,11 @@
     const confirmHire = document.getElementById('confirmHire')
     if (confirmHire) {
       confirmHire.addEventListener('click', () => {
-        const citizenid = document.getElementById('newEmployeeCitizenId').value.trim()
+        const citizenid = document.getElementById('nearbyPlayersSelect').value
         const permission = parseInt(document.getElementById('newEmployeePermission').value)
         
         if (!citizenid) {
-          console.warn('Citizen ID is required')
+          console.warn('Please select a nearby player')
           return
         }
         
@@ -1550,6 +2160,44 @@
         })
       })
     })
+
+    // Refresh nearby buttons (header + form)
+    const refreshHeader = document.getElementById('refreshNearby')
+    if (refreshHeader) refreshHeader.addEventListener('click', () => {
+      // If form is open, refresh there; else briefly open a toast? For now, just refresh if open
+      if (!document.getElementById('hireForm').classList.contains('hidden')) {
+        refreshNearbyPlayers()
+      }
+    })
+    const refreshInForm = document.getElementById('refreshNearbyInForm')
+    if (refreshInForm) refreshInForm.addEventListener('click', (e) => {
+      e.preventDefault()
+      refreshNearbyPlayers()
+    })
+
+    function refreshNearbyPlayers() {
+      const select = document.getElementById('nearbyPlayersSelect')
+      if (!select) return
+      // Clear and set loading
+      select.innerHTML = '<option value="">Scanning...</option>'
+      fetch(`https://${GetParentResourceName()}/getNearbyPlayers`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ radius: 8.0 })
+      }).then(r => r.json()).then(data => {
+        const players = (data && data.players) || []
+        if (players.length === 0) {
+          select.innerHTML = '<option value="">No players nearby</option>'
+          return
+        }
+        const opts = ['<option value="">Select a player...</option>'].concat(players.map(p => {
+          const name = (p.name && p.name.trim().length > 0) ? p.name : (p.citizenid || ('ID ' + p.serverId))
+          return `<option value="${p.citizenid}">${name}</option>`
+        }))
+        select.innerHTML = opts.join('')
+      }).catch(err => {
+        console.error('Failed to fetch nearby players:', err)
+        select.innerHTML = '<option value="">Failed to load nearby players</option>'
+      })
+    }
   }
 
   function addBankingEventListeners() {
@@ -1621,14 +2269,15 @@
     
     // Check if this is a shop-only view (customer shopping, not management)
     const isShopOnly = data.allowedTabs && data.allowedTabs.length === 1 && data.allowedTabs[0] === 'shop'
-    console.log('Is shop only:', isShopOnly, 'Tab:', tab, 'AllowedTabs:', data.allowedTabs)
+    const isPurchaseOnly = data.allowedTabs && data.allowedTabs.length === 1 && data.allowedTabs[0] === 'purchase'
+    console.log('Is shop only:', isShopOnly, 'Is purchase only:', isPurchaseOnly, 'Tab:', tab, 'AllowedTabs:', data.allowedTabs)
     
     const sidebar = document.querySelector('.sidebar')
     const contentArea = document.querySelector('.content-area')
     
-    if (isShopOnly) {
+    if (isShopOnly || isPurchaseOnly) {
       // Hide sidebar for shop-only view
-      console.log('Using shop-only layout')
+      console.log('Using single-page layout')
       sidebar.style.display = 'none'
       contentArea.style.marginLeft = '0'
       contentArea.style.width = '100%'
@@ -1642,7 +2291,37 @@
       showTabs()
     }
     
+    // Update top-left title to the current store's name
+    const nameEl = document.querySelector('.company-name')
+    if (nameEl) {
+      if (state.storeId) {
+        fetch(`https://${GetParentResourceName()}/getStoreInfo`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storeId: state.storeId })
+        }).then(r => r.json()).then(info => {
+          if (info && info.name) {
+            state.storeName = info.name
+            nameEl.textContent = info.name
+          }
+        }).catch(() => {})
+      } else if (state.locationCode) {
+        // For unowned stores, get label from config via server
+        fetch(`https://${GetParentResourceName()}/getLocationInfo`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locationCode: state.locationCode })
+        }).then(r => r.json()).then(info => {
+          if (info && info.label) nameEl.textContent = info.label
+        }).catch(() => { nameEl.textContent = state.locationCode || nameEl.textContent })
+      }
+    }
+
+    // Preload manage stats if landing on manage
+    if (currentTab === 'manage') {
+      render()
+      refreshManageStats()
+    } else {
     render()
+    }
   }
 
   function close() {
@@ -1694,6 +2373,10 @@
       } else if (newTab === 'upgrades') {
         console.log('Switching to upgrades tab')
         renderUpgrades()
+      } else if (newTab === 'manage') {
+        console.log('Switching to manage tab')
+        render()
+        refreshManageStats()
       } else if (newTab === 'about') {
         console.log('Switching to about tab')
         render()

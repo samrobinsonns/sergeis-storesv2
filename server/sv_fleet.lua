@@ -2,7 +2,11 @@ local QBCore = exports['qb-core']:GetCoreObject()
 
 local function getCitizenId(src)
   local Player = QBCore.Functions.GetPlayer(src)
-  return Player and Player.PlayerData and Player.PlayerData.citizenid or nil
+  if not Player or not Player.PlayerData then return nil end
+  local idField = (Config and Config.IdentifierField) or 'citizenid'
+  local id = Player.PlayerData[idField]
+  if not id or id == '' then id = Player.PlayerData.citizenid or Player.PlayerData.stateid end
+  return id
 end
 
 -- Generate random plate for new vehicles
