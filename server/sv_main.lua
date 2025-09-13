@@ -26,6 +26,30 @@ function LoadStores()
   buildClientStores()
 end
 
+-- Ensure all config locations are available for purchase
+function EnsureConfigLocationsAvailable()
+  print('^2[SERGEI STORES] Ensuring config locations are available...')
+
+  -- Track which config locations are already owned
+  local ownedLocations = {}
+  for _, store in pairs(StoresCache) do
+    if store.location_code then
+      ownedLocations[store.location_code] = true
+    end
+  end
+
+  -- Log available locations for purchase
+  local availableCount = 0
+  for code, loc in pairs(Config.Locations or {}) do
+    if not ownedLocations[code] then
+      availableCount = availableCount + 1
+      print(('^3[SERGEI STORES] Location "%s" (%s) available for purchase'):format(loc.label or code, code))
+    end
+  end
+
+  print(('^2[SERGEI STORES] %d locations available for purchase'):format(availableCount))
+end
+
 -- Initial load with dependency checking
 CreateThread(function()
   -- Wait for database to be ready
@@ -35,21 +59,28 @@ CreateThread(function()
     local success, result = pcall(function()
       return MySQL.query.await('SELECT 1 as test', {})
     end)
-    
+
     if success then
       LoadStores()
+      -- Ensure config locations are available for purchase
+      EnsureConfigLocationsAvailable()
       return
     end
-    
+
     Wait(200)
   end
-  
+
   -- Load anyway as fallback
   LoadStores()
+  EnsureConfigLocationsAvailable()
 end)
 
 -- Callback to fetch stores
 QBCore.Functions.CreateCallback('sergeis-stores:server:getStores', function(source, cb)
+  print(('^2[SERGEI STORES SERVER] getStores callback called by source %s, returning %d stores'):format(source, #ClientStores))
+  for i, store in ipairs(ClientStores) do
+    print(('^3[SERGEI STORES SERVER] Store %d: ID=%d, Name=%s, LocationCode=%s'):format(i, store.id, store.name, store.location_code or 'nil'))
+  end
   cb(ClientStores)
 end)
 

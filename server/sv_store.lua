@@ -57,6 +57,50 @@ local function normalizeAllowedItems(input)
   return items, prices, labels
 end
 
+-- Auto-detect inventory system
+local function detectInventorySystem()
+  -- If images are disabled, return 'none'
+  if Config.Inventory.DisableImages then
+    return 'none'
+  end
+
+  if Config.Inventory.System ~= 'auto' then
+    return Config.Inventory.System
+  end
+
+  if GetResourceState('ox_inventory') == 'started' then
+    return 'ox'
+  elseif GetResourceState('qb-inventory') == 'started' then
+    return 'qb'
+  end
+
+  return 'qb' -- fallback
+end
+
+-- Get image path for an item with better fallback handling
+local function getItemImagePath(itemName, inventorySystem)
+  -- If images are disabled, return fallback immediately
+  if inventorySystem == 'none' or Config.Inventory.DisableImages then
+    return 'images/no-image.svg'
+  end
+
+  local imageConfig = Config.Inventory.ImagePaths[inventorySystem]
+  if not imageConfig then
+    imageConfig = Config.Inventory.ImagePaths.qb
+  end
+
+  -- Try to construct the image path
+  local imagePath = imageConfig.basePath .. itemName .. '.png'
+
+  -- For debugging: if we can't determine the inventory system, return a safe fallback
+  if inventorySystem == 'qb' and not imageConfig then
+    return 'images/no-image.svg'
+  end
+
+  -- Return the image path (client-side JavaScript will handle fallbacks)
+  return imagePath
+end
+
 QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(source, cb, storeId)
   local items = DB.GetStock(storeId)
   local store = StoresCache[storeId]
@@ -64,16 +108,25 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(sourc
   local usedCapacity = 0
   for _, row in ipairs(items) do usedCapacity = usedCapacity + (tonumber(row.stock) or 0) end
   local maxCapacity
-  
+
+  -- Detect inventory system
+  local inventorySystem = detectInventorySystem()
+
+  -- Add image paths to items
+  for _, item in ipairs(items) do
+    item.image = getItemImagePath(item.item, inventorySystem)
+  end
+
   -- Debug logging
   print('DEBUG getStock: storeId =', storeId)
   print('DEBUG getStock: store =', json.encode(store or {}))
-  
+  print('DEBUG getStock: inventory system =', inventorySystem)
+
   if store and store.location_code then
     local loc = Config.Locations[store.location_code]
     print('DEBUG getStock: location_code =', store.location_code)
     print('DEBUG getStock: location config =', json.encode(loc or {}))
-    if loc and loc.allowedItems then 
+    if loc and loc.allowedItems then
       local allowedList = normalizeAllowedItems(loc.allowedItems)
       allowed = allowedList
       print('DEBUG getStock: allowedItems =', json.encode(allowed))
@@ -86,8 +139,14 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(sourc
   else
     print('DEBUG getStock: No location_code found for store')
   end
-  
-  cb({ items = items, allowedItems = allowed, usedCapacity = usedCapacity, maxCapacity = maxCapacity })
+
+  cb({
+    items = items,
+    allowedItems = allowed,
+    usedCapacity = usedCapacity,
+    maxCapacity = maxCapacity,
+    inventorySystem = inventorySystem
+  })
 end)
 
 -- Get single store info (name, id)
@@ -280,7 +339,10 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getUnownedStock', functio
     cb({ items = {} })
     return
   end
-  
+
+  -- Detect inventory system
+  local inventorySystem = detectInventorySystem()
+
   -- Generate stock for unowned stores with reasonable default values
   local items = {}
   local allowedList, priceOverrides, labelOverrides = normalizeAllowedItems(loc.allowedItems)
@@ -292,10 +354,14 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getUnownedStock', functio
       item = item,
       label = label,
       price = price,
-      stock = 999 -- Unlimited stock for unowned stores
+      stock = 999, -- Unlimited stock for unowned stores
+      image = getItemImagePath(item, inventorySystem)
     })
   end
-  cb({ items = items })
+  cb({
+    items = items,
+    inventorySystem = inventorySystem
+  })
 end)
 
 QBCore.Functions.CreateCallback('sergeis-stores:server:getVehicles', function(source, cb, storeId)

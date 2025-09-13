@@ -1,6 +1,13 @@
 -- Use global StoreTarget from target_wrapper.lua
 local QBCore = exports['qb-core']:GetCoreObject()
 
+-- Helper function to count table entries
+local function tableCount(t)
+  local count = 0
+  for _ in pairs(t) do count = count + 1 end
+  return count
+end
+
 -- Register the broadcast event immediately
 RegisterNetEvent('sergeis-stores:client:storeLocationsUpdate')
 
@@ -19,6 +26,9 @@ local function hasPerm(storeId, required)
 end
 
 local function buildPublicTargets()
+  print('^2[SERGEI STORES CLIENT] Building public targets...')
+  print(('^2[SERGEI STORES CLIENT] Found %d stores in database'):format(#stores))
+
   -- Rebuild map blips first
   local function removeAllBlips()
     for id, blip in pairs(blips) do
@@ -90,9 +100,21 @@ local function buildPublicTargets()
     end
   end
   
-  -- Add purchase/order points from config for not-yet-owned locations (public access)
-  for code, loc in pairs(Config.Locations or {}) do
+      -- Add purchase/order points from config for not-yet-owned locations (public access)
+  print(('^2[SERGEI STORES CLIENT] Checking config locations... Config exists: %s'):format(Config and 'YES' or 'NO'))
+  if Config and Config.Locations then
+    print(('^2[SERGEI STORES CLIENT] Config.Locations has %d entries'):format(tableCount(Config.Locations)))
+    for code, loc in pairs(Config.Locations) do
+      print(('^3[SERGEI STORES CLIENT] Config location: %s, label: %s, has points: %s'):format(code, loc.label or 'nil', loc.points and 'YES' or 'NO'))
+    end
+  else
+    print('^1[SERGEI STORES CLIENT] ERROR: Config.Locations is nil!')
+    return
+  end
+
+  for code, loc in pairs(Config.Locations) do
     if not purchasedLocations[code] then
+      print(('^3[SERGEI STORES CLIENT] Creating purchase targets for location: %s'):format(code))
       if loc.points and loc.points.purchase then
         local pid = ('loc_%s_purchase'):format(code)
         local p = loc.points.purchase
@@ -116,15 +138,18 @@ local function buildPublicTargets()
             }
           }
         })
+        print(('^3[SERGEI STORES CLIENT] Created purchase target: %s at coords (%.2f, %.2f, %.2f)'):format(pid, coords.x, coords.y, coords.z))
       end
-      if loc.points and loc.points.order then
+
+      -- Use order point for shopping targets (this becomes shop point when purchased)
+      local orderPoint = loc.points and (loc.points.order or loc.points.shop)
+      if orderPoint then
         local pid = ('loc_%s_order'):format(code)
-        local o = loc.points.order
-        local coords = o
-        if type(o) == 'vector4' or o.w then coords = { x = o.x, y = o.y, z = o.z, heading = o.w } end
-        local orderLength = (type(o) == 'table' and o.length) or 1.6
-        local orderWidth = (type(o) == 'table' and o.width) or 1.6
-        local orderHeight = (type(o) == 'table' and o.height) or 1.2
+        local coords = orderPoint
+        if type(orderPoint) == 'vector4' or orderPoint.w then coords = { x = orderPoint.x, y = orderPoint.y, z = orderPoint.z, heading = orderPoint.w } end
+        local orderLength = (type(orderPoint) == 'table' and orderPoint.length) or 1.6
+        local orderWidth = (type(orderPoint) == 'table' and orderPoint.width) or 1.6
+        local orderHeight = (type(orderPoint) == 'table' and orderPoint.height) or 1.2
 
         -- Create map blip for unowned store at order point using config label
         local blipId = ('loc_%s'):format(code)
@@ -261,14 +286,14 @@ local function buildPrivateTargets()
   -- Add management points from config for not-yet-owned locations (private access)
   for code, loc in pairs(Config.Locations or {}) do
     if not purchasedLocations[code] then
-      if loc.points and loc.points.manage then
+      local managePoint = loc.points and loc.points.manage
+      if managePoint then
         local pid = ('loc_%s_manage'):format(code)
-        local m = loc.points.manage
-        local coords = m
-        if type(m) == 'vector4' or m.w then coords = { x = m.x, y = m.y, z = m.z, heading = m.w } end
-        local locManageLength = (type(m) == 'table' and m.length) or 1.2
-        local locManageWidth = (type(m) == 'table' and m.width) or 1.2
-        local locManageHeight = (type(m) == 'table' and m.height) or 1.2
+        local coords = managePoint
+        if type(managePoint) == 'vector4' or managePoint.w then coords = { x = managePoint.x, y = managePoint.y, z = managePoint.z, heading = managePoint.w } end
+        local locManageLength = (type(managePoint) == 'table' and managePoint.length) or 1.2
+        local locManageWidth = (type(managePoint) == 'table' and managePoint.width) or 1.2
+        local locManageHeight = (type(managePoint) == 'table' and managePoint.height) or 1.2
         zones[pid] = StoreTarget.AddBoxZone(pid, coords, locManageLength, locManageWidth, {
           heading = coords.heading,
           height = locManageHeight,
@@ -324,22 +349,35 @@ end)
 
 -- Simplified refresh that just gets stores and builds all targets
 RegisterNetEvent('sergeis-stores:client:refreshSimple', function()
+  print('^2[SERGEI STORES CLIENT] refreshSimple event triggered, calling getStores callback...')
+
   QBCore.Functions.TriggerCallback('sergeis-stores:server:getStores', function(data)
-    if data and #data > 0 then
+    print(('^2[SERGEI STORES CLIENT] getStores callback received data: %s stores'):format(data and #data or 0))
+
+    if data then
       stores = data
       purchasedLocations = {}
       for _, s in ipairs(stores) do
-        if s.location_code then purchasedLocations[s.location_code] = true end
+        if s.location_code then
+          purchasedLocations[s.location_code] = true
+          print(('^3[SERGEI STORES CLIENT] Store %d owns location: %s'):format(s.id, s.location_code))
+        end
       end
-      
+
+      print(('^2[SERGEI STORES CLIENT] Found %d purchased locations, building targets...'):format(tableCount(purchasedLocations)))
+
       -- Build shopping targets immediately (these work for everyone)
       buildPublicTargets()
-      
+
       -- Get permissions in background and add management targets if applicable
+      print('^2[SERGEI STORES CLIENT] Getting permissions...')
       QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(perms)
         myPermissions = perms or {}
+        print(('^2[SERGEI STORES CLIENT] Received permissions for %d stores'):format(tableCount(myPermissions)))
         buildPrivateTargets()
       end)
+    else
+      print('^1[SERGEI STORES CLIENT] ERROR: getStores callback received nil data!')
     end
   end)
 end)
@@ -349,15 +387,27 @@ end)
 -- Simple approach: Load targets when dependencies are ready
 AddEventHandler('onResourceStart', function(res)
   if res ~= GetCurrentResourceName() then return end
-  
+
   CreateThread(function()
+    print('^2[SERGEI STORES CLIENT] Resource starting, waiting for dependencies...')
+
     -- Wait for basic dependencies
+    local attempts = 0
     while not (QBCore and QBCore.Functions and StoreTarget and StoreTarget.AddBoxZone) do
+      attempts = attempts + 1
+      if attempts % 10 == 0 then -- Log every second
+        print(('^3[SERGEI STORES CLIENT] Still waiting for dependencies... QBCore: %s, StoreTarget: %s'):format(
+          QBCore and 'YES' or 'NO',
+          StoreTarget and 'YES' or 'NO'
+        ))
+      end
       Wait(100)
     end
-    
+
+    print('^2[SERGEI STORES CLIENT] Dependencies ready, triggering refresh...')
     -- Load targets immediately with a simple approach
     Wait(2000) -- Give server time to be ready
+    print('^2[SERGEI STORES CLIENT] Triggering refreshSimple event...')
     TriggerEvent('sergeis-stores:client:refreshSimple')
   end)
 end)
@@ -372,6 +422,11 @@ RegisterCommand('testclient', function()
   print('=== CLIENT TEST COMMAND ===')
   print('QBCore available:', QBCore ~= nil)
   print('StoreTarget available:', StoreTarget ~= nil)
+  print('Config available:', Config ~= nil)
+  print('Config.Locations available:', Config and Config.Locations ~= nil)
+  if Config and Config.Locations then
+    print('Config locations count:', tableCount(Config.Locations))
+  end
   print('Current stores:', #stores)
   print('Current zones:', json.encode(zones))
 end)
@@ -382,7 +437,7 @@ RegisterCommand('checkcoords', function()
   for _, s in ipairs(stores) do
     print('Store', s.id, 'location_code:', s.location_code)
     print('Database points:', json.encode(s.points or {}))
-    
+
     if s.location_code and Config.Locations[s.location_code] then
       print('Config points:', json.encode(Config.Locations[s.location_code].points or {}))
       print('Using: CONFIG coordinates')
@@ -390,6 +445,18 @@ RegisterCommand('checkcoords', function()
       print('Using: DATABASE coordinates')
     end
     print('---')
+  end
+end)
+
+-- Add a command to manually test purchase UI
+RegisterCommand('testpurchase', function()
+  print('=== TESTING PURCHASE UI ===')
+  local testLocationCode = 'little_seoul_247'
+  if Config and Config.Locations and Config.Locations[testLocationCode] then
+    print(('Opening purchase UI for: %s'):format(testLocationCode))
+    TriggerEvent('sergeis-stores:client:openPurchase', testLocationCode)
+  else
+    print('ERROR: Test location not found in config')
   end
 end)
 

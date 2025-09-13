@@ -2,7 +2,7 @@ Config = {}
 
 -- 'auto' will use ox_target if started, else qb-target if started. Can force 'qb' or 'ox'.
 Config.Target = 'auto'
-Config.Debug = false
+Config.Debug = true
 
 -- Default interaction configuration per point type
 Config.Interact = {
@@ -17,6 +17,30 @@ Config.DefaultPayment = 'bank' -- 'cash' or 'bank'
 
 -- Player identifier field used by this resource. Set to 'citizenid' (default) or 'stateid'
 Config.IdentifierField = 'citizenid'
+
+-- Inventory system configuration for item images
+Config.Inventory = {
+  -- Auto-detect inventory system: 'auto', 'ox', 'qb', or 'none'
+  System = 'auto',
+
+  -- Disable images entirely (use only fallback)
+  DisableImages = false,
+
+  -- Image paths for different inventory systems
+  ImagePaths = {
+    -- ox_inventory image paths (relative to ox_inventory/web/images/)
+    ox = {
+      basePath = 'nui://ox_inventory/web/images/',
+      fallback = 'nui://ox_inventory/web/images/no-image.svg'
+    },
+
+    -- qb-inventory image paths (relative to qb-inventory/html/images/)
+    qb = {
+      basePath = 'nui://qb-inventory/html/images/',
+      fallback = 'nui://qb-inventory/html/images/no-image.png'
+    }
+  }
+}
 
 -- Default dimensions for new stores created via command
 Config.DefaultStorePoint = {

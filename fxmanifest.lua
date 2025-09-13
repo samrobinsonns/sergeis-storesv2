@@ -12,7 +12,8 @@ ui_page 'html/index.html'
 files {
   'html/index.html',
   'html/app.js',
-  'html/styles.css'
+  'html/styles.css',
+  'html/images/*.svg'
 }
 
 shared_scripts {

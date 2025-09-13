@@ -397,13 +397,37 @@
     })
   }
 
-  function setActiveTab(tabName) {
+  function   setActiveTab(tabName) {
     document.querySelectorAll('.nav-item').forEach(btn => {
       btn.classList.remove('active')
       if (btn.getAttribute('data-tab') === tabName) {
         btn.classList.add('active')
       }
     })
+  }
+
+  // Primary fallback image (SVG file) - simple relative path
+  const primaryFallback = 'images/no-image.svg';
+
+  // Ultimate fallback as data URI (if SVG also fails)
+  const ultimateFallback = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iOCIgZmlsbD0icmciYSgyNTUsIDI1NSwgMjU1LCAwLjA1KSIgc3Ryb2tlPSJyZ2JhKDI1NSwgMjU1LCAyNTUsIDAuMSkiIHN0cm9rZS13aWR0aD0iMSIvPgo8cGF0aCBkPSJNMjQgMjRMMzIgMTZsLTggOGgtOFYxNnoiIGZpbGw9InJnYmEoMjU1LCAyNTUsLCAyNTUsIDAuNikIvgo8L3N2Zz4K';
+
+  // Function to handle image loading errors properly and prevent spam
+  function handleImageError(img) {
+    console.log('Image failed to load:', img.src, 'Applying primary fallback:', primaryFallback);
+    if (!img.dataset.fallbackApplied) {
+      img.dataset.fallbackApplied = 'true';
+      img.src = primaryFallback;
+      // Update onerror to try ultimate fallback if primary also fails
+      img.onerror = function() {
+        console.log('Primary fallback also failed:', primaryFallback, 'Using ultimate fallback');
+        if (!img.dataset.ultimateFallbackApplied) {
+          img.dataset.ultimateFallbackApplied = 'true';
+          img.src = ultimateFallback;
+          img.onerror = null; // Prevent further attempts
+        }
+      };
+    }
   }
 
   function render() {
@@ -541,8 +565,13 @@
         const itemCards = items.length > 0 ? items.map(i => `
           <div class="item-card">
             <div class="item-header">
-              <h4 class="item-name">${i.label}</h4>
-              <div class="item-price">$${i.price}</div>
+              <div class="item-image">
+                <img src="${i.image || primaryFallback}" alt="${i.label}" onerror="handleImageError(this)" onload="console.log('Image loaded successfully:', this.src)">
+              </div>
+              <div class="item-info">
+                <h4 class="item-name">${i.label}</h4>
+                <div class="item-price">$${i.price}</div>
+              </div>
             </div>
             <div class="item-details">
               <div class="item-stock">Stock: ${i.stock}</div>
@@ -761,11 +790,19 @@
       // Create a comprehensive list of all allowed items (existing + available to add)
       const allItems = [...allowed].map(itemCode => {
         const existing = items.find(i => i.item === itemCode)
-        return existing || {
+        if (existing) return existing
+
+        // For new items, get image path from first existing item (they should all use same inventory system)
+        const imagePath = items.length > 0 && items[0].image ?
+          items[0].image.replace(/[^/]*$/, itemCode + '.png') :
+          'images/no-image.svg'
+
+        return {
           item: itemCode,
           label: itemCode, // Default label
           price: 0,
           stock: 0,
+          image: imagePath,
           isNew: true
         }
       })
@@ -778,6 +815,9 @@
           return `
             <div class="stock-item editing" data-item="${item.item}">
               <div class="stock-item-header">
+                <div class="stock-item-image">
+                  <img src="${item.image || primaryFallback}" alt="${item.label}" onerror="handleImageError(this)" onload="console.log('Stock image loaded successfully:', this.src)">
+                </div>
                 <input type="text" class="edit-label" value="${item.label}" placeholder="Item Label">
                 <div class="stock-item-actions">
                   <button class="save-btn" data-item="${item.item}">
@@ -801,6 +841,9 @@
           return `
             <div class="stock-item" data-item="${item.item}">
               <div class="stock-item-header">
+                <div class="stock-item-image">
+                  <img src="${item.image || primaryFallback}" alt="${item.label}" onerror="handleImageError(this)" onload="console.log('Stock image loaded successfully:', this.src)">
+                </div>
                 <div class="stock-item-info">
                   <h4 class="stock-item-name">${item.label}</h4>
                   <span class="stock-item-code">${item.item}</span>
