@@ -77,10 +77,6 @@ end)
 
 -- Callback to fetch stores
 QBCore.Functions.CreateCallback('sergeis-stores:server:getStores', function(source, cb)
-  print(('^2[SERGEI STORES SERVER] getStores callback called by source %s, returning %d stores'):format(source, #ClientStores))
-  for i, store in ipairs(ClientStores) do
-    print(('^3[SERGEI STORES SERVER] Store %d: ID=%d, Name=%s, LocationCode=%s'):format(i, store.id, store.name, store.location_code or 'nil'))
-  end
   cb(ClientStores)
 end)
 

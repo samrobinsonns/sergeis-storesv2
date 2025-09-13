@@ -48,9 +48,6 @@ RegisterNetEvent('sergeis-stores:client:openStock', function(storeId)
     QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(map)
       local perm = map and map[storeId] or 0
       local allowed = tabsForPermission(perm)
-      print('DEBUG client openStock: storeId =', storeId)
-      print('DEBUG client openStock: payload =', json.encode(payload or {}))
-      print('DEBUG client openStock: allowedItems =', json.encode(payload.allowedItems or {}))
       openUI('stock', {
         storeId = storeId,
         items = payload.items or {},

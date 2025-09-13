@@ -2,7 +2,7 @@ Config = {}
 
 -- 'auto' will use ox_target if started, else qb-target if started. Can force 'qb' or 'ox'.
 Config.Target = 'auto'
-Config.Debug = true
+Config.Debug = false
 
 -- Default interaction configuration per point type
 Config.Interact = {

@@ -117,27 +117,18 @@ QBCore.Functions.CreateCallback('sergeis-stores:server:getStock', function(sourc
     item.image = getItemImagePath(item.item, inventorySystem)
   end
 
-  -- Debug logging
-  print('DEBUG getStock: storeId =', storeId)
-  print('DEBUG getStock: store =', json.encode(store or {}))
-  print('DEBUG getStock: inventory system =', inventorySystem)
 
   if store and store.location_code then
     local loc = Config.Locations[store.location_code]
-    print('DEBUG getStock: location_code =', store.location_code)
-    print('DEBUG getStock: location config =', json.encode(loc or {}))
     if loc and loc.allowedItems then
       local allowedList = normalizeAllowedItems(loc.allowedItems)
       allowed = allowedList
-      print('DEBUG getStock: allowedItems =', json.encode(allowed))
     end
     if loc then
       local baseMax = tonumber(loc.maxCapacity) or tonumber(loc.capacity) or 0
       local upgraded = tonumber(store.capacity) or 0
       maxCapacity = baseMax + upgraded
     end
-  else
-    print('DEBUG getStock: No location_code found for store')
   end
 
   cb({

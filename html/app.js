@@ -414,13 +414,11 @@
 
   // Function to handle image loading errors properly and prevent spam
   function handleImageError(img) {
-    console.log('Image failed to load:', img.src, 'Applying primary fallback:', primaryFallback);
     if (!img.dataset.fallbackApplied) {
       img.dataset.fallbackApplied = 'true';
       img.src = primaryFallback;
       // Update onerror to try ultimate fallback if primary also fails
       img.onerror = function() {
-        console.log('Primary fallback also failed:', primaryFallback, 'Using ultimate fallback');
         if (!img.dataset.ultimateFallbackApplied) {
           img.dataset.ultimateFallbackApplied = 'true';
           img.src = ultimateFallback;
@@ -566,7 +564,7 @@
           <div class="item-card">
             <div class="item-header">
               <div class="item-image">
-                <img src="${i.image || primaryFallback}" alt="${i.label}" onerror="handleImageError(this)" onload="console.log('Image loaded successfully:', this.src)">
+                <img src="${i.image || primaryFallback}" alt="${i.label}" onerror="handleImageError(this)">
               </div>
               <div class="item-info">
                 <h4 class="item-name">${i.label}</h4>
@@ -816,7 +814,7 @@
             <div class="stock-item editing" data-item="${item.item}">
               <div class="stock-item-header">
                 <div class="stock-item-image">
-                  <img src="${item.image || primaryFallback}" alt="${item.label}" onerror="handleImageError(this)" onload="console.log('Stock image loaded successfully:', this.src)">
+                  <img src="${item.image || primaryFallback}" alt="${item.label}" onerror="handleImageError(this)">
                 </div>
                 <input type="text" class="edit-label" value="${item.label}" placeholder="Item Label">
                 <div class="stock-item-actions">
@@ -842,7 +840,7 @@
             <div class="stock-item" data-item="${item.item}">
               <div class="stock-item-header">
                 <div class="stock-item-image">
-                  <img src="${item.image || primaryFallback}" alt="${item.label}" onerror="handleImageError(this)" onload="console.log('Stock image loaded successfully:', this.src)">
+                  <img src="${item.image || primaryFallback}" alt="${item.label}" onerror="handleImageError(this)">
                 </div>
                 <div class="stock-item-info">
                   <h4 class="stock-item-name">${item.label}</h4>

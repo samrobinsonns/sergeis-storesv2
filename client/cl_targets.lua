@@ -26,8 +26,6 @@ local function hasPerm(storeId, required)
 end
 
 local function buildPublicTargets()
-  print('^2[SERGEI STORES CLIENT] Building public targets...')
-  print(('^2[SERGEI STORES CLIENT] Found %d stores in database'):format(#stores))
 
   -- Rebuild map blips first
   local function removeAllBlips()
@@ -101,20 +99,12 @@ local function buildPublicTargets()
   end
   
       -- Add purchase/order points from config for not-yet-owned locations (public access)
-  print(('^2[SERGEI STORES CLIENT] Checking config locations... Config exists: %s'):format(Config and 'YES' or 'NO'))
-  if Config and Config.Locations then
-    print(('^2[SERGEI STORES CLIENT] Config.Locations has %d entries'):format(tableCount(Config.Locations)))
-    for code, loc in pairs(Config.Locations) do
-      print(('^3[SERGEI STORES CLIENT] Config location: %s, label: %s, has points: %s'):format(code, loc.label or 'nil', loc.points and 'YES' or 'NO'))
-    end
-  else
-    print('^1[SERGEI STORES CLIENT] ERROR: Config.Locations is nil!')
+  if not (Config and Config.Locations) then
     return
   end
 
   for code, loc in pairs(Config.Locations) do
     if not purchasedLocations[code] then
-      print(('^3[SERGEI STORES CLIENT] Creating purchase targets for location: %s'):format(code))
       if loc.points and loc.points.purchase then
         local pid = ('loc_%s_purchase'):format(code)
         local p = loc.points.purchase
@@ -138,7 +128,6 @@ local function buildPublicTargets()
             }
           }
         })
-        print(('^3[SERGEI STORES CLIENT] Created purchase target: %s at coords (%.2f, %.2f, %.2f)'):format(pid, coords.x, coords.y, coords.z))
       end
 
       -- Use order point for shopping targets (this becomes shop point when purchased)
@@ -349,35 +338,24 @@ end)
 
 -- Simplified refresh that just gets stores and builds all targets
 RegisterNetEvent('sergeis-stores:client:refreshSimple', function()
-  print('^2[SERGEI STORES CLIENT] refreshSimple event triggered, calling getStores callback...')
-
   QBCore.Functions.TriggerCallback('sergeis-stores:server:getStores', function(data)
-    print(('^2[SERGEI STORES CLIENT] getStores callback received data: %s stores'):format(data and #data or 0))
-
     if data then
       stores = data
       purchasedLocations = {}
       for _, s in ipairs(stores) do
         if s.location_code then
           purchasedLocations[s.location_code] = true
-          print(('^3[SERGEI STORES CLIENT] Store %d owns location: %s'):format(s.id, s.location_code))
         end
       end
-
-      print(('^2[SERGEI STORES CLIENT] Found %d purchased locations, building targets...'):format(tableCount(purchasedLocations)))
 
       -- Build shopping targets immediately (these work for everyone)
       buildPublicTargets()
 
       -- Get permissions in background and add management targets if applicable
-      print('^2[SERGEI STORES CLIENT] Getting permissions...')
       QBCore.Functions.TriggerCallback('sergeis-stores:server:getMyStorePerms', function(perms)
         myPermissions = perms or {}
-        print(('^2[SERGEI STORES CLIENT] Received permissions for %d stores'):format(tableCount(myPermissions)))
         buildPrivateTargets()
       end)
-    else
-      print('^1[SERGEI STORES CLIENT] ERROR: getStores callback received nil data!')
     end
   end)
 end)
@@ -389,25 +367,13 @@ AddEventHandler('onResourceStart', function(res)
   if res ~= GetCurrentResourceName() then return end
 
   CreateThread(function()
-    print('^2[SERGEI STORES CLIENT] Resource starting, waiting for dependencies...')
-
     -- Wait for basic dependencies
-    local attempts = 0
     while not (QBCore and QBCore.Functions and StoreTarget and StoreTarget.AddBoxZone) do
-      attempts = attempts + 1
-      if attempts % 10 == 0 then -- Log every second
-        print(('^3[SERGEI STORES CLIENT] Still waiting for dependencies... QBCore: %s, StoreTarget: %s'):format(
-          QBCore and 'YES' or 'NO',
-          StoreTarget and 'YES' or 'NO'
-        ))
-      end
       Wait(100)
     end
 
-    print('^2[SERGEI STORES CLIENT] Dependencies ready, triggering refresh...')
     -- Load targets immediately with a simple approach
     Wait(2000) -- Give server time to be ready
-    print('^2[SERGEI STORES CLIENT] Triggering refreshSimple event...')
     TriggerEvent('sergeis-stores:client:refreshSimple')
   end)
 end)
@@ -428,7 +394,6 @@ RegisterCommand('testclient', function()
     print('Config locations count:', tableCount(Config.Locations))
   end
   print('Current stores:', #stores)
-  print('Current zones:', json.encode(zones))
 end)
 
 -- Add a command to check coordinates being used
